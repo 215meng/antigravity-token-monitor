@@ -3,6 +3,7 @@ import { resolveModelPlaceholder } from '../modelAliases';
 import { SessionScanCandidate, RpcArtifactManifest } from '../types';
 import { RpcArtifactStore } from '../storage/rpcArtifactStore';
 import { AntigravityRpcClient } from './antigravityRpcClient';
+import { readSqliteTrajectoryPayload } from './sqliteTrajectoryReader';
 
 type TrajectorySummary = {
   sessionId: string;
@@ -35,8 +36,17 @@ export class TrajectoryExporter {
     let exportedCount = 0;
 
     try {
-      const summaries = await this.fetchSummariesWithRetry();
-      this.log?.(`RPC summaries fetched: ${summaries.length}. Scanner candidates: ${candidates.length}.`);
+      let summaries: TrajectorySummary[] = [];
+      let summaryError: unknown;
+      try {
+        summaries = await this.fetchSummariesWithRetry();
+        this.log?.(`RPC summaries fetched: ${summaries.length}. Scanner candidates: ${candidates.length}.`);
+      } catch (rpcSummaryError) {
+        summaryError = rpcSummaryError;
+        const message = toErrorMessage(rpcSummaryError);
+        this.log?.(`TrajectoryExporter: RPC export unavailable after retry: ${message}`);
+        console.warn('[antigravity-token-monitor] RPC export unavailable:', rpcSummaryError);
+      }
       const summaryById = new Map(summaries.map((summary) => [summary.sessionId, summary]));
       let unmatchedCount = 0;
 
@@ -53,18 +63,19 @@ export class TrajectoryExporter {
         }
 
         const previous = await this.artifactStore.loadManifest(candidate.sessionId);
+        const hasUsage = await this.artifactStore.hasNonEmptyUsage(candidate.sessionId);
         const force = options?.force === true;
         const selectiveForce = options?.selectiveForce === true;
-        const shouldForceThisSession = force || (
+        const shouldForceThisSession = force || !hasUsage || (
           selectiveForce && (
             summaryById.has(candidate.sessionId)
             || !previous?.artifactHash
             || (previous?.failureCount ?? 0) > 0
           )
         );
-        const exportNeeded = shouldExport(summary, previous, shouldForceThisSession);
+        const exportNeeded = shouldExport(summary, previous, shouldForceThisSession, candidate.lastModifiedMs);
         this.log?.(
-          `TrajectoryExporter: session=${candidate.sessionId} exportNeeded=${exportNeeded} force=${force} selectiveForce=${selectiveForce} forcedSession=${shouldForceThisSession} previousModified=${previous?.serverLastModifiedMs ?? 'none'} nextModified=${summary.lastModifiedMs ?? 'none'} previousStepCount=${previous?.stepCount ?? 'none'} nextStepCount=${summary.stepCount ?? 'none'}.`
+          `TrajectoryExporter: session=${candidate.sessionId} exportNeeded=${exportNeeded} hasUsage=${hasUsage} force=${force} selectiveForce=${selectiveForce} forcedSession=${shouldForceThisSession} previousModified=${previous?.serverLastModifiedMs ?? 'none'} nextModified=${summary.lastModifiedMs ?? 'none'} candidateModified=${candidate.lastModifiedMs} previousStepCount=${previous?.stepCount ?? 'none'} nextStepCount=${summary.stepCount ?? 'none'}.`
         );
         if (!exportNeeded) {
           if (previous) {
@@ -74,18 +85,61 @@ export class TrajectoryExporter {
         }
 
         try {
-          const payload = await this.fetchSessionPayloadWithRetry(candidate.sessionId);
+          let payload: { steps: unknown[]; metadata: unknown[] } = { steps: [], metadata: [] };
+          let rpcError: unknown;
+          if (!summaryError) {
+            try {
+              payload = await this.fetchSessionPayloadWithRetry(candidate.sessionId);
+            } catch (error) {
+              rpcError = error;
+              payload = { steps: [], metadata: [] };
+            }
+          }
+
+          let sqliteLastModifiedMs: number | undefined;
+          const sqlitePayload = readSqliteTrajectoryPayload(this.config.sessionRoot, candidate.sessionId);
+          if (sqlitePayload) {
+            sqliteLastModifiedMs = sqlitePayload.lastModifiedMs;
+            if (payload.metadata.length === 0 && sqlitePayload.metadata.length > 0) {
+              payload.metadata = sqlitePayload.metadata;
+            } else if (sqlitePayload.metadata.length > payload.metadata.length) {
+              payload.metadata = sqlitePayload.metadata;
+            }
+            if (payload.steps.length === 0 && sqlitePayload.steps.length > 0) {
+              payload.steps = sqlitePayload.steps;
+            } else if (sqlitePayload.steps.length > payload.steps.length) {
+              payload.steps = sqlitePayload.steps;
+            }
+          }
+
+          if (rpcError && payload.metadata.length === 0 && payload.steps.length === 0) {
+            throw rpcError;
+          }
+
+          if (payload.steps.length === 0 && payload.metadata.length === 0) {
+            this.log?.(`TrajectoryExporter: session=${candidate.sessionId} returned empty steps and metadata; skipping cache write.`);
+            if (previous && hasUsage) {
+              manifests.set(candidate.sessionId, previous);
+            }
+            continue;
+          }
+
           this.log?.(
             `TrajectoryExporter: session=${candidate.sessionId} fetched steps=${payload.steps.length} metadata=${payload.metadata.length}.`
           );
+          const resolvedModifiedMs = Math.max(
+            summary.lastModifiedMs ?? 0,
+            sqliteLastModifiedMs ?? 0,
+            candidate.lastModifiedMs
+          );
           const next = await this.artifactStore.writeSessionArtifacts({
             sessionId: candidate.sessionId,
-            serverLastModifiedMs: summary.lastModifiedMs,
-            stepCount: summary.stepCount,
+            serverLastModifiedMs: resolvedModifiedMs > 0 ? resolvedModifiedMs : summary.lastModifiedMs,
+            stepCount: summary.stepCount ?? (payload.steps.length > 0 ? payload.steps.length : undefined),
             steps: this.config.exportStepsJsonl
               ? serializeSteps(candidate.sessionId, payload.steps)
-              : serializeStepsRedacted(candidate.sessionId, payload.steps),
-            usage: serializeUsage(candidate.sessionId, payload.metadata)
+              : serializeStepsRedacted(candidate.sessionId, payload.steps, payload.metadata.length === 0),
+            usage: serializeUsage(candidate.sessionId, payload.metadata, payload.steps)
           });
           manifests.set(candidate.sessionId, next);
           exportedCount += 1;
@@ -172,7 +226,12 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function shouldExport(summary: TrajectorySummary, previous: RpcArtifactManifest | null, force: boolean): boolean {
+function shouldExport(
+  summary: TrajectorySummary,
+  previous: RpcArtifactManifest | null,
+  force: boolean,
+  candidateLastModifiedMs?: number
+): boolean {
   if (force) {
     return true;
   }
@@ -181,8 +240,23 @@ function shouldExport(summary: TrajectorySummary, previous: RpcArtifactManifest 
     return true;
   }
 
-  return previous.serverLastModifiedMs !== summary.lastModifiedMs
-    || previous.stepCount !== summary.stepCount;
+  if (
+    candidateLastModifiedMs !== undefined
+    && previous.serverLastModifiedMs !== undefined
+    && candidateLastModifiedMs > previous.serverLastModifiedMs + 1000
+  ) {
+    return true;
+  }
+
+  if (summary.lastModifiedMs !== undefined && previous.serverLastModifiedMs !== summary.lastModifiedMs) {
+    return true;
+  }
+
+  if (summary.stepCount !== undefined && previous.stepCount !== summary.stepCount) {
+    return true;
+  }
+
+  return false;
 }
 
 function serializeSteps(sessionId: string, steps: unknown[]): unknown[] {
@@ -207,10 +281,10 @@ function serializeSteps(sessionId: string, steps: unknown[]): unknown[] {
  * Includes extracted token usage so the parser can derive accurate `reported` mode totals
  * even when the metadata RPC (`GetCascadeTrajectoryGeneratorMetadata`) returns empty.
  */
-function serializeStepsRedacted(sessionId: string, steps: unknown[]): unknown[] {
+function serializeStepsRedacted(sessionId: string, steps: unknown[], includeFallbackUsage = true): unknown[] {
   return steps.map((step, index) => {
     const record = step && typeof step === 'object' ? step as Record<string, unknown> : {};
-    const usage = extractUsage(record);
+    const usage = includeFallbackUsage ? extractUsage(record) : undefined;
     return {
       recordType: 'step',
       sessionId,
@@ -218,19 +292,45 @@ function serializeStepsRedacted(sessionId: string, steps: unknown[]): unknown[] 
       role: extractRole(record),
       timestamp: extractTimestamp(record),
       model: extractModel(record),
-      ...(usage.totalTokens > 0 ? usage : {})
+      ...(usage && usage.totalTokens > 0 ? usage : {})
     };
   });
 }
 
-function serializeUsage(sessionId: string, metadata: unknown[]): unknown[] {
+function serializeUsage(sessionId: string, metadata: unknown[], steps: unknown[] = []): unknown[] {
+  const stepTimestampByIndex = new Map<number, number>();
+  steps.forEach((step, index) => {
+    const ts = extractTimestamp(step);
+    if (ts !== undefined) {
+      const record = step && typeof step === 'object' ? step as Record<string, unknown> : undefined;
+      const explicitIdx = typeof record?.stepIndex === 'number' ? record.stepIndex : index;
+      stepTimestampByIndex.set(explicitIdx, ts);
+    }
+  });
+
   return metadata.map((entry, index) => {
     const usage = extractUsage(entry);
+    let timestamp = extractTimestamp(entry);
+    if (timestamp === undefined && entry && typeof entry === 'object') {
+      const stepIndices = (entry as { stepIndices?: unknown }).stepIndices;
+      if (Array.isArray(stepIndices)) {
+        for (const sIdx of stepIndices) {
+          if (typeof sIdx === 'number') {
+            const ts = stepTimestampByIndex.get(sIdx);
+            if (ts !== undefined) {
+              timestamp = ts;
+              break;
+            }
+          }
+        }
+      }
+    }
+
     return {
       recordType: 'usage',
       sessionId,
       sequence: index,
-      timestamp: extractTimestamp(entry),
+      timestamp,
       model: extractUsageModel(entry),
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
@@ -347,7 +447,16 @@ function extractTimestamp(input: unknown): number | undefined {
     return undefined;
   }
   const record = input as Record<string, unknown>;
-  for (const value of [record.timestamp, record.createdAt, record.lastModifiedTime]) {
+  const metadata = record.metadata && typeof record.metadata === 'object'
+    ? record.metadata as Record<string, unknown>
+    : undefined;
+  for (const value of [
+    record.timestamp,
+    record.createdAt,
+    record.lastModifiedTime,
+    metadata?.createdAt,
+    metadata?.timestamp
+  ]) {
     if (typeof value === 'number' && Number.isFinite(value)) {
       return value;
     }
@@ -371,44 +480,70 @@ function extractUsage(input: unknown) {
     totalTokens: 0
   };
 
-  const visit = (value: unknown): void => {
+  if (!input || typeof input !== 'object') {
+    return result;
+  }
+
+  const record = input as Record<string, unknown>;
+
+  // 1. 优先提取规范的 chatModel.usage（精准单次响应，避免被 retryInfos 镜像对象重复翻倍）
+  const chatModel = record.chatModel as Record<string, unknown> | undefined;
+  const canonicalUsage = (chatModel?.usage || record.usage) as Record<string, unknown> | undefined;
+
+  if (canonicalUsage && typeof canonicalUsage === 'object') {
+    const inp = toFiniteNumber(canonicalUsage.inputTokens) ?? toFiniteNumber(canonicalUsage.promptTokens) ?? 0;
+    const rawOut = toFiniteNumber(canonicalUsage.outputTokens) ?? toFiniteNumber(canonicalUsage.completionTokens) ?? 0;
+    const respOut = toFiniteNumber(canonicalUsage.responseOutputTokens);
+    const rsn = toFiniteNumber(canonicalUsage.thinkingOutputTokens) ?? toFiniteNumber(canonicalUsage.reasoningTokens) ?? 0;
+    const cch = toFiniteNumber(canonicalUsage.cacheReadTokens) ?? 0;
+    const cchw = toFiniteNumber(canonicalUsage.cacheWriteTokens) ?? 0;
+    const out = rsn > 0 && rawOut >= rsn
+      ? (respOut !== undefined ? respOut : Math.max(0, rawOut - rsn))
+      : (respOut !== undefined && rawOut === 0 ? respOut : rawOut);
+
+    result.inputTokens = inp;
+    result.outputTokens = out;
+    result.reasoningTokens = rsn;
+    result.cacheReadTokens = cch;
+    result.cacheWriteTokens = cchw;
+    result.totalTokens = inp + out + rsn + cch + cchw;
+    return result;
+  }
+
+  // 2. 回退机制：若无规范 usage 对象，进行浅层扫描（严格排除 retryInfos 等重复镜像对象）
+  const visit = (value: unknown, depth = 0): void => {
+    if (depth > 2 || !value || typeof value !== 'object') return;
     if (Array.isArray(value)) {
-      value.forEach(visit);
-      return;
-    }
-    if (!value || typeof value !== 'object') {
+      value.forEach(item => visit(item, depth + 1));
       return;
     }
 
-    for (const [key, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    const obj = value as Record<string, unknown>;
+    for (const [key, rawValue] of Object.entries(obj)) {
+      if (key === 'retryInfos' || key === 'stepIndices' || key === 'mendelExperimentIds') continue;
+
       const normalizedKey = key.toLowerCase();
       const numericValue = toFiniteNumber(rawValue);
       if (numericValue !== undefined) {
-        if (/^(input|prompt).*token/.test(normalizedKey)) {
-          result.inputTokens += numericValue;
-        } else if (/^(output|completion).*token/.test(normalizedKey)) {
-          result.outputTokens += numericValue;
-        } else if (/cache.*read.*token/.test(normalizedKey)) {
-          result.cacheReadTokens += numericValue;
-        } else if (/cache.*write.*token/.test(normalizedKey)) {
-          result.cacheWriteTokens += numericValue;
-        } else if (/(reasoning|thinking).*token/.test(normalizedKey)) {
-          result.reasoningTokens += numericValue;
-        } else if (normalizedKey === 'totaltokens' || normalizedKey === 'total_tokens') {
-          result.totalTokens += numericValue;
+        if (/^(input|prompt).*token/.test(normalizedKey) && result.inputTokens === 0) {
+          result.inputTokens = numericValue;
+        } else if (/^(output|completion).*token/.test(normalizedKey) && result.outputTokens === 0) {
+          result.outputTokens = numericValue;
+        } else if (/cache.*read.*token/.test(normalizedKey) && result.cacheReadTokens === 0) {
+          result.cacheReadTokens = numericValue;
+        } else if (/cache.*write.*token/.test(normalizedKey) && result.cacheWriteTokens === 0) {
+          result.cacheWriteTokens = numericValue;
+        } else if (/(reasoning|thinking).*token/.test(normalizedKey) && result.reasoningTokens === 0) {
+          result.reasoningTokens = numericValue;
         }
+      } else {
+        visit(rawValue, depth + 1);
       }
-
-      visit(rawValue);
     }
   };
 
   visit(input);
-  result.totalTokens = Math.max(
-    result.totalTokens,
-    result.inputTokens + result.outputTokens + result.cacheReadTokens + result.cacheWriteTokens + result.reasoningTokens
-  );
-
+  result.totalTokens = result.inputTokens + result.outputTokens + result.cacheReadTokens + result.cacheWriteTokens;
   return result;
 }
 
@@ -428,6 +563,7 @@ function extractUsageModel(input: unknown): string | undefined {
     const chatModelRecord = chatModel as Record<string, unknown>;
     const fromChatModel = preferredModel(
       chatModelRecord.responseModel,
+      chatModelRecord.modelDisplayName,
       chatModelRecord.model,
       chatModelRecord.modelName,
       chatModelRecord.modelId

@@ -7,13 +7,13 @@ describe('buildTokenStatusBarPresentation', () => {
     const presentation = buildTokenStatusBarPresentation(mockDashboardState);
 
     expect(presentation).toEqual({
-      text: '$(graph) 600 tokens 🔥',
+      text: '$(graph) 600 Tokens 🔥',
       tooltip: [
-        'Total tokens: 600',
-        'Sessions: 2 sessions',
-        'Recent activity: 1 changed session',
-        'Sync: Synced',
-        'Click to open dashboard'
+        'Token 总量: 600',
+        '监控会话: 2 个会话',
+        '近期活跃: 1 个会话变更',
+        '同步状态: Synced',
+        '点击打开 Token 监控看板'
       ].join('\n'),
       isError: false
     });
@@ -26,8 +26,8 @@ describe('buildTokenStatusBarPresentation', () => {
       syncMessage: 'Refreshing token data...'
     });
 
-    expect(presentation.text).toBe('$(sync~spin) 600 tokens 🔥');
-    expect(presentation.tooltip).toContain('Sync: Refreshing token data...');
+    expect(presentation.text).toBe('$(sync~spin) 600 Tokens 🔥');
+    expect(presentation.tooltip).toContain('同步状态: Refreshing token data...');
     expect(presentation.isError).toBe(false);
   });
 
@@ -38,8 +38,8 @@ describe('buildTokenStatusBarPresentation', () => {
       syncMessage: 'Session scan did not complete.'
     });
 
-    expect(presentation.text).toBe('$(warning) 600 tokens 🔥');
-    expect(presentation.tooltip).toContain('Sync: Session scan did not complete.');
+    expect(presentation.text).toBe('$(warning) 600 Tokens 🔥');
+    expect(presentation.tooltip).toContain('同步状态: Session scan did not complete.');
     expect(presentation.isError).toBe(true);
   });
 
@@ -48,15 +48,11 @@ describe('buildTokenStatusBarPresentation', () => {
       ...mockDashboardState,
       summary: {
         ...mockDashboardState.summary,
-        totalTokens: 1234567,
-        sessionCount: 1,
-        changedSessionCount: 0
+        totalTokens: 1_234_567
       }
     });
 
-    expect(presentation.text).toBe('$(graph) 1.2m tokens 🔥');
-    expect(presentation.tooltip).toContain('Total tokens: 1,234,567');
-    expect(presentation.tooltip).toContain('Sessions: 1 session');
-    expect(presentation.tooltip).toContain('Recent activity: 0 changed sessions');
+    expect(presentation.text).toBe('$(graph) 1.2m Tokens 🔥');
+    expect(presentation.tooltip).toContain('Token 总量: 1,234,567');
   });
 });

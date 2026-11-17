@@ -14,7 +14,7 @@ async function run() {
     platform: 'node',
     target: ['node18'],
     sourcemap: true,
-    external: ['vscode']
+    external: ['vscode', 'node:sqlite']
   });
 
   const webviewCtx = await esbuild.context({

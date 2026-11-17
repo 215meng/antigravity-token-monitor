@@ -24,7 +24,7 @@
 </script>
 
 <section class="mini-heatmap">
-  <h3 class="section-label">Last 30 Days</h3>
+  <h3 class="section-label">最近 30 天</h3>
 
   <div class="heatmap-grid">
     {#each recentBins as bin}

@@ -52,7 +52,7 @@
     return Math.max(0.2, Math.min(1, Math.log(tokens + 1) / Math.log(maxTokens + 1)));
   }
 
-  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayLabels = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
   $: paddedHeatmap = (() => {
     if (!heatmap.length) return [];
@@ -133,8 +133,8 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">Token Retention Heatmap</h2>
-    <div class="card-meta">Current tokens distributed by last modified date</div>
+    <h2 class="section-title">每日 Token 活跃热力图</h2>
+    <div class="card-meta">严格按每次模型调用真实发生日期分布的每日用量</div>
   </div>
 
   <div class="heatmap-container" bind:this={containerRef}>
@@ -185,41 +185,41 @@
         <div class="popover-divider"></div>
 
         <div class="popover-row popover-row--highlight">
-          <span class="popover-label">Tokens Processed</span>
+          <span class="popover-label">Token 吞吐量</span>
           <span class="popover-value popover-value--accent">{formatCompact(hoveredBin.totalTokens)}</span>
         </div>
 
         <div class="popover-divider"></div>
 
         <div class="popover-row">
-          <span class="popover-label">Input</span>
+          <span class="popover-label">净输入 (Input)</span>
           <span class="popover-value">{formatCompact(hoveredBin.inputTokens)}</span>
         </div>
         <div class="popover-row">
-          <span class="popover-label">Output</span>
+          <span class="popover-label">净输出 (Output)</span>
           <span class="popover-value">{formatCompact(hoveredBin.outputTokens)}</span>
         </div>
         <div class="popover-row">
-          <span class="popover-label">Cache Read</span>
+          <span class="popover-label">缓存命中读取 (Cache Read)</span>
           <span class="popover-value">{formatCompact(hoveredBin.cacheReadTokens)}</span>
         </div>
         <div class="popover-row">
-          <span class="popover-label">Cache Write</span>
+          <span class="popover-label">缓存写入 (Cache Write)</span>
           <span class="popover-value">{formatCompact(hoveredBin.cacheWriteTokens)}</span>
         </div>
         <div class="popover-row">
-          <span class="popover-label">Reasoning</span>
+          <span class="popover-label">深度思考 (Reasoning)</span>
           <span class="popover-value">{formatCompact(hoveredBin.reasoningTokens)}</span>
         </div>
 
         <div class="popover-divider"></div>
 
         <div class="popover-row">
-          <span class="popover-label">Cost</span>
+          <span class="popover-label">预估费用</span>
           <span class="popover-value">{hoveredBin.costUsd > 0 ? formatUsd(hoveredBin.costUsd) : '—'}</span>
         </div>
         <div class="popover-row">
-          <span class="popover-label">Messages</span>
+          <span class="popover-label">交互消息数</span>
           <span class="popover-value">{hoveredBin.messageCount}</span>
         </div>
       </div>

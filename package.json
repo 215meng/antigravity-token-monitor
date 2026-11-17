@@ -1,19 +1,23 @@
 {
   "name": "antigravity-token-monitor",
   "displayName": "Antigravity Token Monitor",
-  "description": "Monitor Antigravity session token usage and review session activity in a dashboard.",
-  "version": "0.0.17",
+  "description": "实时监控 Antigravity 会话的 Token 使用量，支持精确去重、按日热力图、SQLite 原生读取及自动同步（基于 ddarkr/antigravity-token-monitor 二次开发）。",
+  "version": "0.0.22",
   "publisher": "ddarkr",
+  "author": {
+    "name": "215meng",
+    "url": "https://github.com/215meng"
+  },
   "icon": "icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ddarkr/antigravity-token-monitor"
+    "url": "https://github.com/215meng/antigravity-token-monitor"
   },
   "bugs": {
-    "url": "https://github.com/ddarkr/antigravity-token-monitor/issues"
+    "url": "https://github.com/215meng/antigravity-token-monitor/issues"
   },
-  "homepage": "https://github.com/ddarkr/antigravity-token-monitor#readme",
+  "homepage": "https://github.com/215meng/antigravity-token-monitor#readme",
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -34,7 +38,7 @@
       "activitybar": [
         {
           "id": "antigravity-token-monitor",
-          "title": "Antigravity Token Monitor",
+          "title": "Antigravity Token 监控",
           "icon": "$(graph)"
         }
       ]
@@ -44,29 +48,29 @@
         {
           "type": "webview",
           "id": "antigravity-token-monitor.sidebarView",
-          "name": "Token Overview"
+          "name": "Token 用量概览"
         }
       ]
     },
     "commands": [
       {
         "command": "antigravity-token-monitor.openDashboard",
-        "title": "Antigravity Token Monitor: Open Dashboard",
+        "title": "Antigravity Token 监控: 打开监控面板",
         "icon": "$(graph)"
       },
       {
         "command": "antigravity-token-monitor.refreshNow",
-        "title": "Antigravity Token Monitor: Refresh Now",
+        "title": "Antigravity Token 监控: 立即刷新数据",
         "icon": "$(sync)"
       },
       {
         "command": "antigravity-token-monitor.exportNow",
-        "title": "Antigravity Token Monitor: Export Sessions Now",
+        "title": "Antigravity Token 监控: 立即导出全部会话",
         "icon": "$(export)"
       },
       {
         "command": "antigravity-token-monitor.resetCache",
-        "title": "Antigravity Token Monitor: Reset Cache",
+        "title": "Antigravity Token 监控: 重置缓存与重新索引",
         "icon": "$(trash)"
       }
     ],
@@ -97,9 +101,9 @@
         },
         "antigravity-token-monitor.maxFileBytes": {
           "type": "number",
-          "default": 524288,
+          "default": 52428800,
           "minimum": 16384,
-          "description": "Maximum file size to read during token estimation heuristics."
+          "description": "Maximum file size to read during token estimation and JSONL parsing (default 50MB)."
         },
         "antigravity-token-monitor.useRpcExport": {
           "type": "boolean",
@@ -132,7 +136,8 @@
     "package": "npm run compile && npx @vscode/vsce package --no-dependencies",
     "typecheck": "tsc --noEmit",
     "typecheck:webview": "svelte-check --tsconfig ./tsconfig.webview.json",
-    "test:webview": "vitest run"
+    "test:webview": "vitest run",
+    "usage": "npx tsx scripts/run-token-scan.ts"
   },
   "devDependencies": {
     "@vscode/vsce": "^3.7.1",

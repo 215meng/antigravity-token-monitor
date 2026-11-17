@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ModelUsageBreakdown } from '../../../types';
   import { formatCompact, formatUsd } from '../../lib/formatters';
+  import { formatModelDisplayName } from '../../../modelAliases';
 
   export let models: ModelUsageBreakdown[];
 
@@ -12,14 +13,14 @@
 </script>
 
 <section class="model-usage">
-  <h3 class="section-label">Model Usage</h3>
+  <h3 class="section-label">模型使用分布</h3>
 
   {#if visibleModels.length > 0}
     <div class="model-list">
       {#each visibleModels as model}
         <div class="model-item">
           <div class="model-header">
-            <span class="model-name" title={model.model}>{model.model}</span>
+            <span class="model-name" title={formatModelDisplayName(model.model)}>{formatModelDisplayName(model.model)}</span>
             <span class="model-tokens">{formatCompact(model.totalTokens)}</span>
           </div>
           <div class="bar-track">
@@ -29,7 +30,7 @@
             ></div>
           </div>
           <div class="model-meta">
-            {model.sessionCount} session{model.sessionCount !== 1 ? 's' : ''}
+            {model.sessionCount} 个会话
             {#if model.pricingStatus === 'priced' && model.costUsd !== undefined}
               • {formatUsd(model.costUsd)}
             {/if}
@@ -39,10 +40,10 @@
     </div>
 
     {#if hiddenCount > 0}
-      <div class="more-label">+{hiddenCount} more model{hiddenCount !== 1 ? 's' : ''}</div>
+      <div class="more-label">+ 还有 {hiddenCount} 个模型</div>
     {/if}
   {:else}
-    <div class="empty">No model data yet.</div>
+    <div class="empty">暂无模型数据</div>
   {/if}
 </section>
 
@@ -50,15 +51,15 @@
   .model-usage {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-sm);
+    gap: var(--spacing-xs);
   }
   .section-label {
     margin: 0;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
     color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
   .model-list {
     display: flex;
@@ -73,47 +74,36 @@
   .model-header {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
-    gap: var(--spacing-xs);
+    font-size: 12px;
   }
   .model-name {
-    font-size: 11px;
-    font-weight: 500;
+    font-family: var(--font-mono);
     color: var(--text);
-    font-family: var(--code-font);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    flex: 1;
-    min-width: 0;
+    max-width: 140px;
   }
   .model-tokens {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--text);
-    font-family: var(--code-font);
-    font-variant-numeric: tabular-nums;
-    flex-shrink: 0;
+    color: var(--muted);
   }
   .bar-track {
-    height: 3px;
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 1.5px;
+    height: 4px;
+    background: var(--surface-line);
+    border-radius: 2px;
     overflow: hidden;
-    box-shadow: inset 0 0 0 1px var(--surface-line);
   }
   .bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--accent), var(--accent-strong));
-    border-radius: 1.5px;
-    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--accent);
+    border-radius: 2px;
   }
   .model-meta {
     font-size: 10px;
     color: var(--muted);
   }
   .more-label {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--muted);
     text-align: center;
     padding: var(--spacing-xs) 0;
@@ -121,7 +111,6 @@
   .empty {
     font-size: 11px;
     color: var(--muted);
-    text-align: center;
-    padding: var(--spacing-md) 0;
+    padding: var(--spacing-xs) 0;
   }
 </style>

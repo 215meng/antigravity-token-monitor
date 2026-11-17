@@ -1,10 +1,14 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { resolveModelPlaceholder } from '../modelAliases';
-import { ModelTokenBreakdown, SessionParsePlan, SessionTotals, TokenBreakdown } from '../types';
+import { canonicalizeModelId, resolveModelPlaceholder } from '../modelAliases';
+import { DailyTokenBreakdown, ModelTokenBreakdown, SessionParsePlan, SessionTotals, TokenBreakdown } from '../types';
 
 const TEXT_EXTENSIONS = new Set(['.json', '.jsonl', '.md', '.txt', '.log', '.yaml', '.yml']);
 const LABEL_FILES = ['task.md', 'implementation_plan.md', 'walkthrough.md'];
+
+type CanonicalUsageEntry = ExtractedCanonicalUsage & {
+  dateKey?: string;
+};
 
 type StructuredSignalResult = {
   breakdown: TokenBreakdown;
@@ -13,6 +17,8 @@ type StructuredSignalResult = {
   messageCount: number;
   modelTotals: Record<string, number>;
   modelBreakdowns: Record<string, ModelTokenBreakdown>;
+  usageEntries: CanonicalUsageEntry[];
+  stepTimestampByIndex: Map<number, number>;
 };
 
 export class AntigravitySessionParser {
@@ -22,11 +28,19 @@ export class AntigravitySessionParser {
     const reported: TokenBreakdown = emptyBreakdown();
     const modelTotals: Record<string, number> = {};
     const modelBreakdowns: Record<string, ModelTokenBreakdown> = {};
+    const usageEntries: CanonicalUsageEntry[] = [];
+    const stepTimestampByIndex = new Map<number, number>();
     let messageCount = 0;
     let evidenceCount = 0;
     let estimatedText = '';
-    console.warn(`[DEBUG] parse: tokenFilePaths=${candidate.tokenFilePaths?.join(' | ')}`);
-    for (const filePath of candidate.tokenFilePaths) {
+    let hasAuthoritativeUsageFile = false;
+    const orderedPaths = [...candidate.tokenFilePaths].sort((a, b) => {
+      const aUsage = path.basename(a).toLowerCase() === 'usage.jsonl' ? 0 : 1;
+      const bUsage = path.basename(b).toLowerCase() === 'usage.jsonl' ? 0 : 1;
+      return aUsage - bUsage;
+    });
+
+    for (const filePath of orderedPaths) {
       const parsed = await this.readFileContent(filePath);
       if (!parsed) {
         continue;
@@ -34,6 +48,7 @@ export class AntigravitySessionParser {
 
       const { content } = parsed;
       const ext = path.extname(filePath).toLowerCase();
+      const baseName = path.basename(filePath).toLowerCase();
       if (ext === '.json' || ext === '.jsonl') {
         const {
           breakdown,
@@ -41,13 +56,26 @@ export class AntigravitySessionParser {
           text,
           messageCount: parsedMessageCount,
           modelTotals: parsedModelTotals,
-          modelBreakdowns: parsedModelBreakdowns
+          modelBreakdowns: parsedModelBreakdowns,
+          usageEntries: parsedUsageEntries,
+          stepTimestampByIndex: parsedStepTimestamps
         } = extractStructuredSignals(content, ext);
+        messageCount += parsedMessageCount;
+        for (const [stepIdx, ts] of parsedStepTimestamps.entries()) {
+          stepTimestampByIndex.set(stepIdx, ts);
+        }
+        // 若已有 usage.jsonl 结构化用量，steps.jsonl 仅贡献消息数与单步时间戳，严禁重复叠加其中嵌入的 usage
+        if (baseName === 'steps.jsonl' && hasAuthoritativeUsageFile) {
+          continue;
+        }
+        if (baseName === 'usage.jsonl' && hits > 0) {
+          hasAuthoritativeUsageFile = true;
+        }
         mergeBreakdown(reported, breakdown);
         mergeModelTotals(modelTotals, parsedModelTotals);
         mergeModelBreakdowns(modelBreakdowns, parsedModelBreakdowns);
+        usageEntries.push(...parsedUsageEntries);
         evidenceCount += hits;
-        messageCount += parsedMessageCount;
         estimatedText += text;
       } else {
         estimatedText += `\n${content}`;
@@ -55,8 +83,10 @@ export class AntigravitySessionParser {
     }
 
     const label = await this.resolveLabel(candidate);
-    console.warn(`[DEBUG] parse result: evidenceCount=${evidenceCount} mode=${evidenceCount > 0 ? 'reported' : 'estimated'}`);
-    return evidenceCount > 0 ? finalizeReported(candidate, label, reported, modelTotals, modelBreakdowns, evidenceCount, messageCount) : finalizeEstimated(candidate, label, estimatedText, messageCount);
+    const dailyBreakdowns = buildDailyBreakdownsFromEntries(usageEntries, stepTimestampByIndex, candidate.lastModifiedMs);
+    return evidenceCount > 0
+      ? finalizeReported(candidate, label, reported, modelTotals, modelBreakdowns, evidenceCount, messageCount, dailyBreakdowns)
+      : finalizeEstimated(candidate, label, estimatedText, messageCount);
   }
 
   private async resolveLabel(candidate: SessionParsePlan): Promise<string> {
@@ -84,14 +114,16 @@ export class AntigravitySessionParser {
 
     try {
       const stat = await fs.stat(filePath);
-      console.warn(`[DEBUG] readFileContent: ${filePath} size=${stat.size} max=${this.maxFileBytes} skip=${stat.size > this.maxFileBytes}`);
       if (stat.size > this.maxFileBytes) {
         return null;
       }
 
       return { content: await fs.readFile(filePath, 'utf8') };
     } catch (error) {
-      console.warn(`[antigravity-token-monitor] Failed to read ${filePath}:`, error);
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code !== 'ENOENT') {
+        console.warn(`[antigravity-token-monitor] Failed to read ${filePath}:`, error);
+      }
       return null;
     }
   }
@@ -104,9 +136,12 @@ function extractStructuredSignals(content: string, ext: string): StructuredSigna
   let extractedText = '';
   const modelTotals: Record<string, number> = {};
   const modelBreakdowns: Record<string, ModelTokenBreakdown> = {};
+  const usageEntries: CanonicalUsageEntry[] = [];
+  const stepTimestampByIndex = new Map<number, number>();
 
   if (ext === '.jsonl') {
     const lines = content.split(/\r?\n/);
+    const seenRequestIds = new Set<string>();
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) {
@@ -115,29 +150,52 @@ function extractStructuredSignals(content: string, ext: string): StructuredSigna
 
       extractedText += `\n${trimmed}`;
       try {
-        const parsed = JSON.parse(trimmed) as unknown;
+        const parsed = JSON.parse(trimmed) as any;
         messageCount += countStepRows(parsed);
-        const signal = walkForTokenSignals(parsed);
-        mergeBreakdown(breakdown, signal.breakdown);
-        mergeModelTotals(modelTotals, signal.modelTotals);
-        mergeModelBreakdowns(modelBreakdowns, signal.modelBreakdowns);
-        hits += signal.hits;
+        collectStepTimestamp(parsed, stepTimestampByIndex);
+
+        if (parsed && typeof parsed === 'object' && parsed.recordType === 'usage') {
+          const extracted = extractCanonicalUsageFields(parsed);
+          if (!extracted) {
+            continue;
+          }
+          if (extracted.requestId) {
+            if (seenRequestIds.has(extracted.requestId)) {
+              continue;
+            }
+            seenRequestIds.add(extracted.requestId);
+          }
+          if (extracted.breakdown.totalTokens > 0) {
+            usageEntries.push(extracted);
+          }
+          const canonical = toCanonicalSignalResult(extracted);
+          mergeBreakdown(breakdown, canonical.breakdown);
+          mergeModelTotals(modelTotals, canonical.modelTotals);
+          mergeModelBreakdowns(modelBreakdowns, canonical.modelBreakdowns);
+          hits += canonical.hits;
+        } else {
+          const signal = walkForTokenSignals(parsed);
+          mergeBreakdown(breakdown, signal.breakdown);
+          mergeModelTotals(modelTotals, signal.modelTotals);
+          mergeModelBreakdowns(modelBreakdowns, signal.modelBreakdowns);
+          hits += signal.hits;
+        }
       } catch {
       }
     }
 
-    return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns };
+    return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns, usageEntries, stepTimestampByIndex };
   }
 
   const trimmed = content.trim();
   if (!trimmed) {
-    return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns };
+    return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns, usageEntries, stepTimestampByIndex };
   }
 
   extractedText += `\n${trimmed}`;
   try {
     const parsed = JSON.parse(content) as unknown;
-        messageCount = countMessages(parsed);
+    messageCount = countMessages(parsed);
     const signal = walkForTokenSignals(parsed);
     mergeBreakdown(breakdown, signal.breakdown);
     mergeModelTotals(modelTotals, signal.modelTotals);
@@ -146,7 +204,7 @@ function extractStructuredSignals(content: string, ext: string): StructuredSigna
   } catch {
   }
 
-  return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns };
+  return { breakdown, hits, text: extractedText, messageCount, modelTotals, modelBreakdowns, usageEntries, stepTimestampByIndex };
 }
 
 type SignalResult = {
@@ -185,46 +243,57 @@ function walkForTokenSignals(value: unknown): SignalResult {
     }
 
     const currentModel = preferredModel(extractModel(record), inheritedModel);
+    const model = canonicalizeModelId(currentModel);
+    let recordCategorizedSum = 0;
+    let recordTotalValue: number | undefined;
     for (const [key, rawValue] of Object.entries(record)) {
-      const numericValue = toFiniteNumber(rawValue);
       const normalizedKey = key.toLowerCase();
+      if (normalizedKey === 'retryinfos' || normalizedKey === 'contextwindowmetadata' || /limit|max|window|estimated|quota/.test(normalizedKey)) {
+        continue;
+      }
 
+      const numericValue = toFiniteNumber(rawValue);
       if (numericValue !== undefined) {
-        const model = currentModel ?? 'unknown';
         if (/^(input|prompt).*token/.test(normalizedKey)) {
           breakdown.inputTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
+          recordCategorizedSum += numericValue;
           mergeModelCategory(modelBreakdowns, model, { inputTokens: numericValue });
           hits += 1;
         } else if (/^(output|completion).*token/.test(normalizedKey)) {
           breakdown.outputTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
+          recordCategorizedSum += numericValue;
           mergeModelCategory(modelBreakdowns, model, { outputTokens: numericValue });
           hits += 1;
         } else if (/cache.*read.*token/.test(normalizedKey)) {
           breakdown.cacheReadTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
+          recordCategorizedSum += numericValue;
           mergeModelCategory(modelBreakdowns, model, { cacheReadTokens: numericValue });
           hits += 1;
         } else if (/cache.*write.*token/.test(normalizedKey)) {
           breakdown.cacheWriteTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
+          recordCategorizedSum += numericValue;
           mergeModelCategory(modelBreakdowns, model, { cacheWriteTokens: numericValue });
           hits += 1;
         } else if (/(reasoning|thinking).*token/.test(normalizedKey)) {
           breakdown.reasoningTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
+          recordCategorizedSum += numericValue;
           mergeModelCategory(modelBreakdowns, model, { reasoningTokens: numericValue });
           hits += 1;
         } else if (normalizedKey === 'totaltokens' || normalizedKey === 'total_tokens') {
-          breakdown.totalTokens += numericValue;
-          modelTotals[model] = (modelTotals[model] ?? 0) + numericValue;
-          mergeModelCategory(modelBreakdowns, model, { totalTokens: numericValue });
+          recordTotalValue = Math.max(recordTotalValue ?? 0, numericValue);
           hits += 1;
         }
       }
 
       visit(rawValue, currentModel);
+    }
+
+    if (recordTotalValue !== undefined && recordTotalValue > recordCategorizedSum) {
+      breakdown.totalTokens += recordTotalValue - recordCategorizedSum;
+      mergeModelCategory(modelBreakdowns, model, { totalTokens: recordTotalValue });
+    }
+    if (recordCategorizedSum > 0 || recordTotalValue !== undefined) {
+      modelTotals[model] = (modelTotals[model] ?? 0) + Math.max(recordCategorizedSum, recordTotalValue ?? 0);
     }
   };
 
@@ -240,7 +309,10 @@ function countStepRows(value: unknown): number {
   }
 
   const record = value as Record<string, unknown>;
-  return record.recordType === 'step' ? 1 : 0;
+  if (record.recordType === 'step') {
+    return 1;
+  }
+  return record.type === 'USER_INPUT' || record.type === 'PLANNER_RESPONSE' ? 1 : 0;
 }
 function countMessages(parsed: unknown): number {
   if (!parsed || typeof parsed !== 'object') {
@@ -258,7 +330,19 @@ function countMessages(parsed: unknown): number {
 }
 
 
-function extractCanonicalUsageSignal(record: Record<string, unknown>, inheritedModel?: string): SignalResult | null {
+export type ExtractedCanonicalUsage = {
+  requestId?: string;
+  nativeCascadeId?: string;
+  timestamp?: number;
+  stepIndices?: number[];
+  model: string;
+  breakdown: TokenBreakdown;
+};
+
+export function extractCanonicalUsageFields(
+  record: Record<string, unknown>,
+  inheritedModel?: string
+): ExtractedCanonicalUsage | null {
   if (record.recordType !== 'usage') {
     return null;
   }
@@ -269,10 +353,15 @@ function extractCanonicalUsageSignal(record: Record<string, unknown>, inheritedM
   const chatModelRecord = chatModel && typeof chatModel === 'object' ? chatModel as Record<string, unknown> : undefined;
   const usage = chatModelRecord?.usage;
   const usageRecord = usage && typeof usage === 'object' ? usage as Record<string, unknown> : undefined;
+  const customMetadata = chatModelRecord?.customMetadata;
+  const customMetadataRecord = customMetadata && typeof customMetadata === 'object'
+    ? customMetadata as Record<string, unknown>
+    : undefined;
 
   const model = preferredModel(
     extractModel(record),
     chatModelRecord?.responseModel,
+    chatModelRecord?.modelDisplayName,
     chatModelRecord?.modelName,
     chatModelRecord?.model,
     usageRecord?.responseModel,
@@ -281,29 +370,75 @@ function extractCanonicalUsageSignal(record: Record<string, unknown>, inheritedM
     inheritedModel
   ) ?? 'unknown';
 
-  const breakdown: TokenBreakdown = {
-    inputTokens: toFiniteNumber(record.inputTokens) ?? toFiniteNumber(usageRecord?.inputTokens) ?? 0,
-    outputTokens: preferObservedNumber(
-      toFiniteNumber(usageRecord?.outputTokens),
-      toFiniteNumber(usageRecord?.responseOutputTokens),
-      toFiniteNumber(record.outputTokens)
-    ),
-    cacheReadTokens: toFiniteNumber(record.cacheReadTokens) ?? toFiniteNumber(usageRecord?.cacheReadTokens) ?? 0,
-    cacheWriteTokens: toFiniteNumber(record.cacheWriteTokens) ?? toFiniteNumber(usageRecord?.cacheWriteTokens) ?? 0,
-    reasoningTokens: toFiniteNumber(record.reasoningTokens)
-      ?? toFiniteNumber(usageRecord?.thinkingOutputTokens)
-      ?? toFiniteNumber(usageRecord?.reasoningTokens)
-      ?? 0,
-    totalTokens: toFiniteNumber(record.totalTokens) ?? toFiniteNumber(usageRecord?.totalTokens) ?? 0
-  };
+  const requestId = firstString(
+    usageRecord?.responseId,
+    usageRecord?.messageId,
+    record.responseId,
+    record.messageId
+  );
+  const nativeCascadeId = firstString(customMetadataRecord?.cascade_id);
+  const timestamp = parseOptionalTimestamp(record.timestamp) ?? parseOptionalTimestamp(rawRecord?.timestamp);
+  const stepIndicesRaw = rawRecord?.stepIndices ?? record.stepIndices;
+  const stepIndices = Array.isArray(stepIndicesRaw)
+    ? stepIndicesRaw.filter((item): item is number => typeof item === 'number' && Number.isFinite(item))
+    : undefined;
 
+  // 权威数据源 raw.chatModel.usage 优先，防止读取旧版导出写错为 2 倍的顶层脏字段
+  const inputTokens = toFiniteNumber(usageRecord?.inputTokens) ?? toFiniteNumber(record.inputTokens) ?? 0;
+  const cacheReadTokens = toFiniteNumber(usageRecord?.cacheReadTokens) ?? toFiniteNumber(record.cacheReadTokens) ?? 0;
+  const cacheWriteTokens = toFiniteNumber(usageRecord?.cacheWriteTokens) ?? toFiniteNumber(record.cacheWriteTokens) ?? 0;
+
+  const rawTotalOutput = preferObservedNumber(
+    toFiniteNumber(usageRecord?.outputTokens),
+    toFiniteNumber(record.outputTokens)
+  );
+  const rawResponseOutput = toFiniteNumber(usageRecord?.responseOutputTokens);
+  const usageThinking = toFiniteNumber(usageRecord?.thinkingOutputTokens) ?? toFiniteNumber(usageRecord?.reasoningTokens);
+  const reasoningTokens = usageThinking ?? toFiniteNumber(record.reasoningTokens) ?? 0;
+
+  // 在 Antigravity/Gemini RPC 中 usage.outputTokens 恒等于 responseOutputTokens + thinkingOutputTokens；
+  // 为避免后续 subtotal 与计费把思考 Token 二次相加，拆分为正交的纯答复输出 + 深度思考
+  let outputTokens: number;
+  if (usageThinking !== undefined && rawTotalOutput >= usageThinking) {
+    outputTokens = rawResponseOutput !== undefined ? rawResponseOutput : Math.max(0, rawTotalOutput - usageThinking);
+  } else if (rawResponseOutput !== undefined && rawTotalOutput === 0) {
+    outputTokens = rawResponseOutput;
+  } else if (rawResponseOutput !== undefined && reasoningTokens > 0 && rawTotalOutput === rawResponseOutput + reasoningTokens) {
+    outputTokens = rawResponseOutput;
+  } else {
+    outputTokens = rawTotalOutput;
+  }
+
+  const rawTotal = toFiniteNumber(usageRecord?.totalTokens)
+    ?? (inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens === 0 ? toFiniteNumber(record.totalTokens) : undefined)
+    ?? 0;
+
+  const breakdown: TokenBreakdown = {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    reasoningTokens,
+    totalTokens: rawTotal
+  };
   breakdown.totalTokens = normalizeTotal(breakdown);
+
+  return { requestId, nativeCascadeId, timestamp, stepIndices, model, breakdown };
+}
+
+function toCanonicalSignalResult(extracted: ExtractedCanonicalUsage): SignalResult {
+  const { model, breakdown } = extracted;
   const categorizedTotal = breakdown.inputTokens + breakdown.outputTokens + breakdown.cacheReadTokens + breakdown.cacheWriteTokens + breakdown.reasoningTokens;
   const modelTotals = categorizedTotal > 0 ? { [model]: categorizedTotal } : {};
   const modelBreakdowns = categorizedTotal > 0 ? { [model]: breakdown } : {};
   const hits = categorizedTotal > 0 || breakdown.totalTokens > 0 ? 1 : 0;
 
   return { breakdown, hits, modelTotals, modelBreakdowns };
+}
+
+function extractCanonicalUsageSignal(record: Record<string, unknown>, inheritedModel?: string): SignalResult | null {
+  const extracted = extractCanonicalUsageFields(record, inheritedModel);
+  return extracted ? toCanonicalSignalResult(extracted) : null;
 }
 
 function finalizeReported(
@@ -313,7 +448,8 @@ function finalizeReported(
   modelTotals: Record<string, number>,
   modelBreakdowns: Record<string, ModelTokenBreakdown>,
   evidenceCount: number,
-  messageCount: number
+  messageCount: number,
+  dailyBreakdowns?: Record<string, DailyTokenBreakdown>
 ): SessionTotals {
   return {
     sessionId: candidate.sessionId,
@@ -325,10 +461,81 @@ function finalizeReported(
     evidenceCount,
     modelTotals,
     modelBreakdowns,
+    ...(dailyBreakdowns && Object.keys(dailyBreakdowns).length > 0 ? { dailyBreakdowns } : {}),
     messageCount,
     ...breakdown,
     totalTokens: normalizeTotal(breakdown)
   };
+}
+
+function collectStepTimestamp(value: unknown, stepTimestampByIndex: Map<number, number>): void {
+  if (!value || typeof value !== 'object') {
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  const stepIdx = typeof record.stepIndex === 'number'
+    ? record.stepIndex
+    : typeof record.step_index === 'number'
+      ? record.step_index
+      : undefined;
+  if (stepIdx === undefined) {
+    return;
+  }
+  const ts = parseOptionalTimestamp(record.timestamp) ?? parseOptionalTimestamp(record.created_at);
+  if (ts !== undefined) {
+    stepTimestampByIndex.set(stepIdx, ts);
+  }
+}
+
+function parseOptionalTimestamp(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 1_000_000_000) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed) && parsed > 1_000_000_000) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+export function formatLocalDateKey(timestampMs: number): string {
+  const date = new Date(timestampMs);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function buildDailyBreakdownsFromEntries(
+  entries: CanonicalUsageEntry[],
+  stepTimestampByIndex: Map<number, number>,
+  fallbackModifiedMs: number
+): Record<string, DailyTokenBreakdown> | undefined {
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  const daily: Record<string, DailyTokenBreakdown> = {};
+  for (const entry of entries) {
+    let ts = entry.timestamp;
+    if (ts === undefined && entry.stepIndices) {
+      for (const sIdx of entry.stepIndices) {
+        const mapped = stepTimestampByIndex.get(sIdx);
+        if (mapped !== undefined) {
+          ts = mapped;
+          break;
+        }
+      }
+    }
+    const effectiveTs = ts ?? fallbackModifiedMs;
+    const dateKey = formatLocalDateKey(effectiveTs);
+    const bucket = daily[dateKey] ?? { ...emptyBreakdown(), messageCount: 0 };
+    mergeBreakdown(bucket, entry.breakdown);
+    bucket.totalTokens = normalizeTotal(bucket);
+    bucket.messageCount += 1;
+    daily[dateKey] = bucket;
+  }
+
+  return Object.keys(daily).length > 0 ? daily : undefined;
 }
 
 function finalizeEstimated(candidate: SessionParsePlan, label: string, text: string, messageCount: number): SessionTotals {
@@ -382,7 +589,7 @@ function mergeBreakdown(target: TokenBreakdown, source: TokenBreakdown): void {
   target.totalTokens += source.totalTokens;
 }
 
-function normalizeTotal(breakdown: TokenBreakdown): number {
+export function normalizeTotal(breakdown: TokenBreakdown): number {
   const subtotal = breakdown.inputTokens
     + breakdown.outputTokens
     + breakdown.cacheReadTokens
@@ -445,6 +652,7 @@ function extractModel(input: Record<string, unknown>): string | undefined {
     const chatModelRecord = chatModel as Record<string, unknown>;
     const nested = preferredModel(
       chatModelRecord.responseModel,
+      chatModelRecord.modelDisplayName,
       chatModelRecord.model,
       chatModelRecord.modelId,
       chatModelRecord.modelName

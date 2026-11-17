@@ -9,10 +9,10 @@
   $: total = Math.max(categorizedTotal, 1);
 
   $: items = [
-    { key: 'input', label: 'Input', tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100 },
-    { key: 'output', label: 'Output', tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100 },
-    { key: 'cache', label: 'Cache', tokens: cacheTokens, pct: (cacheTokens / total) * 100 },
-    { key: 'reasoning', label: 'Reasoning', tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100 }
+    { key: 'input', label: '输入 (Input)', tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100 },
+    { key: 'output', label: '输出 (Output)', tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100 },
+    { key: 'cache', label: '缓存 (Cache)', tokens: cacheTokens, pct: (cacheTokens / total) * 100 },
+    { key: 'reasoning', label: '深度思考 (Reasoning)', tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100 }
   ];
 
   const formatPct = (pct: number) => pct < 0.1 && pct > 0 ? '<0.1%' : `${pct.toFixed(1)}%`;
@@ -20,20 +20,20 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">Token Breakdown</h2>
-    <div class="card-meta">Proportional shares</div>
+    <h2 class="section-title">Token 构成细分</h2>
+    <div class="card-meta">各维度占比</div>
   </div>
 
   <div class="card-body">
     <div class="total-display">
       <span class="total-number">{formatNumber(breakdown.totalTokens)}</span>
-      <span class="total-label">Total Tokens</span>
+      <span class="total-label">Token 总量</span>
     </div>
 
     <div class="coverage-copy">
-      <span>{formatNumber(categorizedTotal)} categorized</span>
+      <span>已分类细分总量: {formatNumber(categorizedTotal)}</span>
       {#if breakdown.totalTokens !== categorizedTotal}
-        <span>• {formatPct(categorizedTotal / Math.max(breakdown.totalTokens, 1) * 100)} of total classified</span>
+        <span>• {formatPct(categorizedTotal / Math.max(breakdown.totalTokens, 1) * 100)} 已归类</span>
       {/if}
     </div>
 

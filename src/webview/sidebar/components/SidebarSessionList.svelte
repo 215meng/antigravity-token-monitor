@@ -8,10 +8,10 @@
   const MAX_COLLAPSED = 5;
   let expanded = false;
 
-  $: activeSessions = sessions.filter(s => s.status === 'active');
-  $: archivedSessions = sessions.filter(s => s.status === 'archived');
-  $: visibleActive = expanded ? activeSessions : activeSessions.slice(0, MAX_COLLAPSED);
-  $: hiddenActiveCount = Math.max(0, activeSessions.length - MAX_COLLAPSED);
+  $: active最近活跃会话 = sessions.filter(s => s.status === 'active');
+  $: archived最近活跃会话 = sessions.filter(s => s.status === 'archived');
+  $: visibleActive = expanded ? active最近活跃会话 : active最近活跃会话.slice(0, MAX_COLLAPSED);
+  $: hiddenActiveCount = Math.max(0, active最近活跃会话.length - MAX_COLLAPSED);
 
   function toggle() {
     expanded = !expanded;
@@ -20,8 +20,8 @@
 
 <section class="session-list">
   <div class="section-header">
-    <h3 class="section-label">Sessions</h3>
-    <span class="session-count">{activeSessions.length} active</span>
+    <h3 class="section-label">最近活跃会话</h3>
+    <span class="session-count">{active最近活跃会话.length} active</span>
   </div>
 
   {#if visibleActive.length > 0}
@@ -30,7 +30,7 @@
         <button
           class="session-item"
           on:click={() => onOpenSession(session.sessionId)}
-          title="Open in dashboard"
+          title="在监控面板中打开"
         >
           <div class="session-row">
             <span class="session-name">{session.label}</span>
@@ -57,20 +57,20 @@
 
     {#if !expanded && hiddenActiveCount > 0}
       <button class="expand-btn" on:click={toggle}>
-        Show {hiddenActiveCount} more
+        展开其余 {hiddenActiveCount} 个会话
       </button>
     {:else if expanded && hiddenActiveCount > 0}
       <button class="expand-btn" on:click={toggle}>
-        Show less
+        收起
       </button>
     {/if}
 
-    {#if expanded && archivedSessions.length > 0}
+    {#if expanded && archived最近活跃会话.length > 0}
       <div class="archived-divider">
-        <span>{archivedSessions.length} archived</span>
+        <span>{archived最近活跃会话.length} archived</span>
       </div>
       <div class="sessions">
-        {#each archivedSessions as session (session.sessionId)}
+        {#each archived最近活跃会话 as session (session.sessionId)}
           <button
             class="session-item archived"
             on:click={() => onOpenSession(session.sessionId)}
@@ -88,7 +88,7 @@
       </div>
     {/if}
   {:else}
-    <div class="empty">No active sessions found.</div>
+    <div class="empty">暂无活跃会话记录</div>
   {/if}
 </section>
 

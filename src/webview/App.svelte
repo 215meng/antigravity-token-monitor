@@ -48,7 +48,7 @@
     </main>
   </div>
 {:else}
-  <div class="loading">Waiting for dashboard state...</div>
+  <div class="loading">正在等待监控面板数据...</div>
 {/if}
 
 <style>

@@ -1,216 +1,122 @@
-# Antigravity Token Monitor
+# Antigravity Token Monitor (增强与精确核算版)
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC?logo=visualstudiocode)](https://code.visualstudio.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)](https://svelte.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> Monitor Antigravity session token usage and review session activity in a dashboard.
+> 在 VS Code 面板与侧边栏中实时、精准地收集、去重、核算并可视化您的 Antigravity 会话 Token 使用量。
+
+> [!NOTE]
+> **致谢与项目声明（Upstream Attribution）**
+> 本项目基于原作者 **ddarkr** 的开源项目 **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)**（MIT License）进行深度修复、Windows 适配、全量中文汉化与精确核算增强二次开发。完整保留原作者版权声明，并向原作者致敬！
 
 ![Dashboard Preview](docs/screenshot.png)
 
-Antigravity Token Monitor is a VS Code extension that automatically collects, analyzes, and visualizes **token usage** across your [Antigravity](https://blog.google/technology/google-deepmind/) coding sessions. It connects to the running Antigravity process via internal RPC, exports token metadata as local JSONL artifacts, and presents the data through a rich Svelte-powered dashboard and a persistent status bar indicator.
+---
+
+## 本 Fork 版本核心改进与新增特性
+
+在原项目架构的基础上，本版本重点修复了底层采集、重复统计与跨日核算等核心问题：
+
+- 🎯 **全链路精确去重核算（零重复、零遗漏）**
+  - 优先提取权威 `raw.chatModel.usage` 字段，屏蔽旧缓存顶层翻倍脏数据及同请求镜像 `retryInfos`；
+  - 将 `outputTokens` 正交拆分为纯答复输出（`responseOutputTokens`）与深度思考（`thinkingOutputTokens`），避免重复累加；
+  - 当 `usage.jsonl` 存在时不重复累加 `steps.jsonl` 中的回退用量；
+  - 通过唯一请求 ID（`responseId` / `messageId`）执行跨会话所有权仲裁，彻底消除主会话与 Subagent/Fork 子会话之间因历史克隆导致的数倍虚高；
+  - 自动融合 `transcript.jsonl` 中因修改重发/回退分支（Revert/Edit）而被覆盖掉的历史真实 `PLANNER_RESPONSE` 调用。
+- 📅 **真实每日热力图（按单步发生日期精确统计）**
+  - 通过解析 SQLite `steps` 表时间戳、导出 `stepIndices` 与 `transcript.jsonl` `created_at`，将每一次模型调用归入其实际发生的本地日期（`YYYY-MM-DD`），杜绝跨日长会话因新对话将过去日期的用量迁走。
+- 🗄️ **本地 SQLite `.db` 原生直读与 50MB 大文件支持**
+  - 新增 `sqliteTrajectoryReader`，在 RPC 摘要缺失或离线情况下直接从 `conversations/<sessionId>.db` 读取 `steps` 与 `gen_metadata`；
+  - 默认 `maxFileBytes` 提升至 `52428800`（50MB），防止大型长会话被截断；完整纳入活跃与归档会话。
+- 🔄 **全自动增量实时同步**
+  - 通过定时增量刷新 + `conversations/`、`brain/` 目录文件监听（防抖自动导出与重算），无需手动干预即可自动同步最新真实用量。
+- 🪟 **Windows 深度适配与新模型支持**
+  - 修复 Windows 下的进程/端口探测与大小写路径包含判定；
+  - 支持最新模型家族解析与定价映射（Gemini 4 Argon / Hydrogen / Carbon、Orchestrator (Argon)、Gemini 3.8 Flash 全档位、Claude Opus/Sonnet 5.5、GPT-OSS 120B 等）。
+- 🇨🇳 **完整简体中文汉化**
+  - 看板、侧边栏、状态栏、热力图悬浮提示与配置说明全面简体中文化。
 
 ---
 
-## Features
-
-- 🔥 **Real-time Token Tracking** — Automatically monitors token usage across all Antigravity sessions
-- 🕰️ **Historical Session Recovery** — Recovers session data that existed before the extension was started by directly querying the RPC server for sessions missing from the active list
-- 📊 **Interactive Dashboard** — Svelte-based webview with KPI cards, heatmaps, model usage tables, and session leaderboards
-- 📌 **Sidebar Overview** — Activity Bar에 상주하는 미니 대시보드 (KPI, 토큰 브레이크다운, 모델 사용량, 30일 히트맵, 세션 리스트)
-- 💰 **Cost Estimation** — Per-model cost calculation using [LiteLLM](https://github.com/BerriAI/litellm) open-source pricing data
-- 🏷️ **Model Breakdown** — Per-model token breakdown (input, output, cache read/write, reasoning) with automatic resolution of internal model placeholder IDs
-- 📈 **Activity Heatmap** — 180-day activity visualization showing daily token usage and cost patterns
-- 🔄 **RPC Export** — Periodically exports session data from the Antigravity RPC server into local JSONL artifacts
-- 🔒 **Multi-instance Safety** — File-based locking prevents duplicate refresh/export across multiple VS Code windows
-- ⏱️ **Refresh Countdown** — Visual countdown timer with circular progress ring showing time until the next auto-refresh
-- 🖥️ **Status Bar** — Always-visible total token count in the VS Code status bar
-
----
-
-## ⚠️ Disclaimer
+## ⚠️ Disclaimer / 免责声明
 
 > [!WARNING]
 >
-> - This is an **unofficial, community-driven** project and is **not affiliated with or endorsed by Google**.
-> - The extension relies on **undocumented internal RPC endpoints** of the Antigravity process. These may change or break without notice in any Antigravity update.
-> - Token counts labeled as **"estimated"** are heuristic approximations (`text length ÷ 4`) and may differ significantly from actual usage.
-> - Cost estimates are based on [LiteLLM's open-source pricing data](https://github.com/BerriAI/litellm) and may not reflect your actual billing. **Do not use these values for financial decisions.**
-> - The extension makes **local HTTPS requests to `127.0.0.1`** to communicate with the Antigravity process. No data is sent to external servers (except fetching the LiteLLM pricing JSON from GitHub).
-> - When `exportStepsJsonl` is enabled, **conversation content that Antigravity normally stores encrypted** will be exported as **plain-text JSONL** and cached on your local machine (`~/.gemini/antigravity/.token-monitor/`). Be aware that this may expose sensitive conversation data in an unencrypted form.
+> - 本项目为非官方社区开源工具，与 Google 无任何关联。
+> - 依赖 Antigravity 本地持久化数据与内部 `127.0.0.1` RPC 接口，接口格式可能随软件版本变化。
+> - 成本估算基于 [LiteLLM 开源定价表](https://github.com/BerriAI/litellm)，仅作参考，请勿用于财务结算依据。
+> - 所有采集与分析均在本地完成，不会向第三方服务器上传您的对话或任何隐私数据（仅从 GitHub 拉取公开的 LiteLLM 模型定价 JSON）。
 
 ---
 
-## Getting Started
+## 快速开始（Getting Started）
 
-### Prerequisites
+### 环境要求
 
 - [VS Code](https://code.visualstudio.com/) `≥ 1.96.0`
-- [Node.js](https://nodejs.org/) `≥ 18`
-- A running [Antigravity](https://blog.google/technology/google-deepmind/) instance (the extension auto-detects the process)
+- [Node.js](https://nodejs.org/) `≥ 22`（内置 `node:sqlite` 支持本地 `.db` 直读，若低于 22 则自动降级回 RPC/文件系统）
+- 正在运行或本机已保存历史会话的 Antigravity
 
-### Installation (Development)
+### 从源码编译与安装
 
 ```bash
-# Clone the repository
-git clone https://github.com/user/antigravity-token-monitor.git
+# 克隆仓库
+git clone https://github.com/215meng/antigravity-token-monitor.git
 cd antigravity-token-monitor
 
-# Install dependencies
+# 安装依赖
 npm install
 
-# Compile the extension
-npm run compile
+# 运行类型检查与测试
+npm run typecheck
+npm run typecheck:webview
+npm run test:webview
 
-# Or watch for changes during development
-npm run watch
+# 编译并打包 VSIX
+npm run package
 ```
 
-Then press **F5** in VS Code to launch the Extension Development Host.
+Windows 用户也可以直接运行根目录的一键安装脚本：
 
-### Usage
+```powershell
+./install-extension.ps1
+```
 
-1. Open the **Command Palette** (`Cmd+Shift+P` / `Ctrl+Shift+P`)
-2. Run `Antigravity Token Monitor: Open Dashboard`
-3. The dashboard opens in a webview panel, displaying token usage data
+或在 VS Code 中按 `Ctrl+Shift+P` 执行 `Extensions: Install from VSIX...` 选择打包生成的 `.vsix` 文件。
 
-You can also click the **token counter** in the status bar to open the dashboard.
+### 使用方式
 
-**Sidebar**: Activity Bar의 그래프 아이콘을 클릭하면 사이드바에 토큰 사용량 요약이 항상 표시됩니다.
-
----
-
-## Commands
-
-| Command                                          | Description                                        |
-| ------------------------------------------------ | -------------------------------------------------- |
-| `Antigravity Token Monitor: Open Dashboard`      | Open the token monitoring dashboard                |
-| `Antigravity Token Monitor: Refresh Now`         | Trigger an immediate data refresh                  |
-| `Antigravity Token Monitor: Export Sessions Now` | Force-export all sessions and display the count    |
-| `Antigravity Token Monitor: Reset Cache`         | Delete all cached data and re-process from scratch |
+1. 打开命令面板（`Cmd+Shift+P` / `Ctrl+Shift+P`）
+2. 运行 `Antigravity Token 监控: 打开监控面板`
+3. 也可直接点击状态栏右侧的 Token 统计数字，或点击左侧 Activity Bar 图标查看侧边栏迷你概览。
 
 ---
 
-## Configuration
-
-All settings are under `antigravity-token-monitor.*` in VS Code settings.
-
-| Setting               | Default                 | Description                                           |
-| --------------------- | ----------------------- | ----------------------------------------------------- |
-| `sessionRoot`         | `~/.gemini/antigravity` | Override the Antigravity session root directory       |
-| `pollIntervalMs`      | `60000`                 | How often the extension rescans sessions (ms)         |
-| `historyLimit`        | `120`                   | Max snapshots to keep per session                     |
-MS:| `maxFileBytes`        | `10485760` (10MB)      | Max file size to read during token estimation (bytes) |
-WR:| `useRpcExport`        | `true`                  | Enable exporting sessions through the internal RPC    |
-BS:| `exportStepsJsonl`    | `false`                 | Also export conversation steps (for debugging)        |
-NR:| `rpcExportIntervalMs` | `300000`                | How often to run background RPC exports (ms)          |
-SK:| `rpcTimeoutMs`        | `5000`                  | Timeout for internal RPC requests (ms)                |
-
-## Troubleshooting
-
-See [docs/ISSUES.md](docs/ISSUES.md) for known issues and solutions.
-
----
-## Architecture
-
-The extension follows a layered pipeline architecture:
+## 项目架构
 
 ```
 Data Acquisition → Analysis → Orchestration → Presentation
 ```
 
-**Data Acquisition**: The `ProcessLocator` detects the running Antigravity `language_server` process, the `AntigravityRpcClient` fetches token metadata via HTTPS RPC, and the `TrajectoryExporter` serializes it into local `usage.jsonl` files. Sessions not found in the active RPC list are recovered via direct fallback queries, enabling historical session data collection even for sessions that existed before the extension was started. The `modelAliases` module resolves internal model placeholder IDs (`MODEL_PLACEHOLDER_*`) to human-readable names.
-
-**Analysis**: The `SessionScanner` enumerates session directories, the `AntigravitySessionParser` extracts token counts (either from structured usage records or text-based estimation), and the `LiteLlmPricingCatalog` calculates per-model costs.
-
-**Orchestration**: The `TokenMonitorService` coordinates periodic polling, RPC exports, and event emission with debounced updates. A file-based `PollLock` mechanism prevents duplicate processing when multiple VS Code instances are running.
-
-**Presentation**: The `TokenStatusBar` shows a persistent token count, the `DashboardPanel` renders a Svelte webview with 13 UI components including KPI strips, heatmaps, model tables, session leaderboards, and a real-time refresh countdown timer, and the `SidebarViewProvider` renders a compact WebviewView in the Activity Bar with 6 sidebar-optimized components (KPI, token mix, model usage, mini heatmap, session list, sync status).
-
-For a detailed breakdown, see `docs/architecture.md` in this repository.
-
----
-
-## Project Structure
-
-```
-src/
-├── extension.ts               # Extension entry point
-├── config.ts                  # Configuration reader
-├── types.ts                   # Shared type definitions
-├── modelAliases.ts            # Model placeholder ID → name resolution
-├── rpc/                       # Data acquisition (RPC layer)
-├── monitor/                   # Scanning, analysis, orchestration
-│   └── pollLock.ts            #   File-based lock for multi-instance safety
-├── parser/                    # Token parsing (reported/estimated)
-├── pricing/                   # LiteLLM-based cost estimation
-├── storage/                   # Persistence (artifacts + snapshots)
-├── statusBar/                 # VS Code status bar
-└── webview/                   # Svelte UI
-    ├── components/            #   13 dashboard components
-    ├── sidebar/               #   Sidebar mini-dashboard
-    │   ├── components/        #     6 sidebar-optimized components
-    │   ├── SidebarApp.svelte  #     Sidebar root
-    │   ├── main.ts            #     Sidebar entry point
-    │   └── sidebarApi.ts      #     Sidebar ↔ extension messaging
-    ├── sidebarViewProvider.ts #   WebviewViewProvider for Activity Bar
-    ├── getSidebarHtml.ts      #   Sidebar HTML shell
-    └── lib/                   #   Shared stores, formatters, utilities
-```
-
----
-
-## Development
-
-```bash
-# Compile
-npm run compile
-
-# Watch mode
-npm run watch
-
-# Type check (extension)
-npm run typecheck
-
-# Type check (webview)
-npm run typecheck:webview
-
-# Run webview tests
-npm run test:webview
-```
-
-### Tech Stack
-
-| Layer      | Technology               |
-| ---------- | ------------------------ |
-| Extension  | TypeScript, Node.js      |
-| Webview UI | Svelte 5                 |
-| Bundler    | esbuild + esbuild-svelte |
-| Testing    | Vitest, Testing Library  |
-
----
-
-## How It Works
-
-1. **Process Detection** — Finds the Antigravity `language_server` process via `ps` and extracts its CSRF token and port
-2. **RPC Communication** — Calls `GetCascadeTrajectoryGeneratorMetadata` to fetch per-session token usage metadata
-3. **Historical Recovery** — Sessions missing from the active RPC list are queried directly using file-system session IDs as a fallback, recovering data from sessions that existed before the extension was started
-4. **Model Resolution** — Internal model placeholder IDs (`MODEL_PLACEHOLDER_*`) are resolved to human-readable names via a static mapping, with `responseModel` fields taking priority when available
-5. **JSONL Serialization** — Normalizes metadata into `usage.jsonl` records stored under `.token-monitor/rpc-cache/`
-6. **Token Parsing** — Extracts model-specific token breakdowns (input, output, cache, reasoning) from structured records, or estimates from text length as fallback
-7. **Cost Calculation** — Matches models against [LiteLLM's open-source pricing catalog](https://github.com/BerriAI/litellm) to compute USD costs
-8. **Visualization** — Renders data in the status bar, a sidebar mini-dashboard (Activity Bar), and a full Svelte webview dashboard with a real-time refresh countdown
+- `src/rpc/` — 进程探测、HTTPS RPC 客户端、SQLite `.db` 原生解析与增量导出
+- `src/parser/` — 规范化 Token 解析与单步每日明细归因
+- `src/monitor/` — 会话扫描、跨会话 `responseId` 去重、撤回分支融合、服务调度与文件锁
+- `src/pricing/` — 基于 LiteLLM 的模型匹配与成本估算
+- `src/storage/` — RPC 缓存及按月分片的会话状态持久化
+- `src/statusBar/` & `src/webview/` — 状态栏与 Svelte 5 看板 / 侧边栏界面
 
 ---
 
 ## Inspired By
 
-- **[antigravity-storage-manager](https://github.com/unchase/antigravity-storage-manager)** — Session token parsing approach
-- **[tokscale](https://github.com/junhoyeo/tokscale)** — Token usage tracking and visualization
+- **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)** — 原作者与基础项目
+- **[antigravity-storage-manager](https://github.com/unchase/antigravity-storage-manager)** — 会话 Token 解析思路参考
+- **[tokscale](https://github.com/junhoyeo/tokscale)** — 用量追踪与可视化灵感
 
 ---
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.

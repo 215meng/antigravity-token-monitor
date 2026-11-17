@@ -108,4 +108,74 @@ describe('AntigravitySessionParser', () => {
     expect(result.totalTokens).toBe(10);
   });
 
+  it('splits thinking tokens from output tokens without double counting and ignores fallback usage in steps.jsonl when usage.jsonl exists', async () => {
+    const sessionDir = await mkdtemp(path.join(tmpdir(), 'antigravity-parser-'));
+    const usagePath = path.join(sessionDir, 'usage.jsonl');
+    const stepsPath = path.join(sessionDir, 'steps.jsonl');
+    await mkdir(sessionDir, { recursive: true });
+
+    await writeFile(
+      usagePath,
+      `${JSON.stringify({
+        recordType: 'usage',
+        model: 'gemini-3.8-flash',
+        timestamp: Date.parse('2026-11-16T08:00:00Z'),
+        // Intentionally corrupted top-level doubled values from legacy cache
+        inputTokens: 200,
+        outputTokens: 50,
+        cacheReadTokens: 1000,
+        totalTokens: 1250,
+        raw: {
+          stepIndices: [1],
+          chatModel: {
+            usage: {
+              inputTokens: '100',
+              outputTokens: '25',
+              responseOutputTokens: '10',
+              thinkingOutputTokens: '15',
+              cacheReadTokens: '500',
+              responseId: 'resp-1'
+            }
+          }
+        }
+      })}\n`,
+      'utf8'
+    );
+
+    await writeFile(
+      stepsPath,
+      `${JSON.stringify({
+        recordType: 'step',
+        stepIndex: 1,
+        role: 'model',
+        timestamp: Date.parse('2026-11-16T08:00:00Z'),
+        inputTokens: 100,
+        outputTokens: 25,
+        cacheReadTokens: 500,
+        totalTokens: 625
+      })}\n`,
+      'utf8'
+    );
+
+    const parsePlan: SessionParsePlan = {
+      sessionId: 'session-no-double',
+      sessionDir,
+      labelHint: 'No double count',
+      lastModifiedMs: Date.parse('2026-11-17T08:00:00Z'),
+      tokenFilePaths: [usagePath, stepsPath],
+      analysisSignature: 'sig-no-double',
+      source: 'rpc-artifact'
+    };
+
+    const result = await new AntigravitySessionParser(1024 * 1024).parse(parsePlan);
+
+    expect(result.inputTokens).toBe(100);
+    expect(result.outputTokens).toBe(10);
+    expect(result.reasoningTokens).toBe(15);
+    expect(result.cacheReadTokens).toBe(500);
+    expect(result.totalTokens).toBe(625);
+    expect(result.dailyBreakdowns?.['2026-11-16']?.totalTokens).toBe(625);
+    expect(result.dailyBreakdowns?.['2026-11-17']).toBeUndefined();
+  });
+
 });

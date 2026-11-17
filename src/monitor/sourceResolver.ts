@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import { RpcArtifactManifest, SessionParsePlan, SessionScanCandidate } from '../types';
 import { RpcArtifactStore } from '../storage/rpcArtifactStore';
 
-const ANALYSIS_SIGNATURE_VERSION = 'analysis-v4-canonical-usage-records';
+const ANALYSIS_SIGNATURE_VERSION = 'analysis-v8-canonical-daily-dedup';
 
 export async function resolveParsePlan(
   candidate: SessionScanCandidate,
@@ -12,8 +12,9 @@ export async function resolveParsePlan(
   if (artifactStore) {
     const manifest = knownManifest ?? await artifactStore.loadManifest(candidate.sessionId);
     if (manifest?.artifactHash) {
-      const tokenFilePaths = await artifactStore.getTokenFilePaths(candidate.sessionId);
-      if (tokenFilePaths.length > 0) {
+      const hasUsage = await artifactStore.hasNonEmptyUsage(candidate.sessionId);
+      const tokenFilePaths = hasUsage ? await artifactStore.getTokenFilePaths(candidate.sessionId) : [];
+      if (hasUsage && tokenFilePaths.length > 0) {
         return {
           sessionId: candidate.sessionId,
           sessionDir: candidate.sessionDir,

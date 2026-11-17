@@ -58,12 +58,12 @@
   <div class="top-bar-content">
     <div class="brand">
       <div class="logo-mark" aria-hidden="true"></div>
-      <h1 class="title">Antigravity Token Monitor</h1>
+      <h1 class="title"><span>Antigravity Token Monitor</span> <span class="cn-title">监控看板</span></h1>
     </div>
 
     <div class="actions">
       {#if state.syncStatus === 'idle' && state.lastPollAt && state.config.pollIntervalMs}
-        <div class="countdown-container" title="Next auto-refresh in {timeRemaining}s">
+        <div class="countdown-container" title="下次自动刷新倒计时: {timeRemaining}秒">
           <svg viewBox="0 0 24 24" class="ring-svg">
             <circle class="ring-bg" cx="12" cy="12" r="10"></circle>
             <circle class="ring-fg" cx="12" cy="12" r="10" stroke-dasharray="62.83" stroke-dashoffset="{62.83 * (1 - Math.max(0, Math.min(1, progress)))}"></circle>
@@ -78,7 +78,7 @@
         {state.syncMessage}
       </div>
       <button class="button" on:click={handleRefresh} disabled={state.syncStatus === 'running'}>
-        {state.syncStatus === 'running' ? 'Refreshing...' : 'Refresh'}
+        {state.syncStatus === 'running' ? 'Refreshing... (正在刷新)' : 'Refresh (立即刷新)'}
       </button>
     </div>
   </div>

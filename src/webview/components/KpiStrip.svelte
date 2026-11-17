@@ -9,32 +9,32 @@
 <section class="stat-band">
   <div class="stat-grid">
     <article class="stat-block primary">
-      <div class="stat-label">Total Tokens</div>
+      <div class="stat-label">Token 总消耗量 (Total Tokens)</div>
       <div class="stat-value highlight">{formatNumber(summary.totalTokens)}</div>
-      <div class="stat-context">Aggregate token volume across exported sessions</div>
+      <div class="stat-context">全部已扫描会话的 Token 吞吐总量</div>
     </article>
 
     <div class="stat-divider"></div>
 
     <article class="stat-block">
-      <div class="stat-label">Total Sessions</div>
+      <div class="stat-label">监控会话总数 (Total Sessions)</div>
       <div class="stat-value">{formatNumber(summary.sessionCount)}</div>
-      <div class="stat-context">{formatNumber(summary.activeSessionCount)} active, {formatNumber(summary.archivedSessionCount)} archived</div>
+      <div class="stat-context">{formatNumber(summary.activeSessionCount)} 活跃，{formatNumber(summary.archivedSessionCount)} 归档</div>
     </article>
 
     <div class="stat-divider"></div>
 
     <article class="stat-block">
-      <div class="stat-label">Total Messages</div>
+      <div class="stat-label">交互消息总数 (Total Messages)</div>
       <div class="stat-value">{formatNumber(summary.messageCount)}</div>
-      <div class="stat-context">Total message count retrieved from each session</div>
+      <div class="stat-context">统计全部会话中的消息/Step总数</div>
     </article>
 
     <div class="stat-divider"></div>
 
     <article class="stat-block">
-      <div class="stat-label">Total Cost</div>
-      <div class="stat-value">{pricing.pricedModelCount > 0 ? formatUsd(pricing.totalCostUsd) : 'Unavailable'}</div>
+      <div class="stat-label">预估总成本 (Total Cost)</div>
+      <div class="stat-value">{pricing.pricedModelCount > 0 ? formatUsd(pricing.totalCostUsd) : '不可用'}</div>
       <div class="stat-context">{pricing.message}</div>
     </article>
   </div>

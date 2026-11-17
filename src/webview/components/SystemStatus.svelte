@@ -7,27 +7,27 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">System Status</h2>
-    <div class="card-meta">Export Pipeline</div>
+    <h2 class="section-title">系统与导出状态</h2>
+    <div class="card-meta">后台数据管道</div>
   </div>
 
   <div class="card-body">
     <div class="status-card">
       <div class="status-header">
         <div class="status-icon {state.exportStatus.status}"></div>
-        <div class="status-name">Export Pipeline</div>
+        <div class="status-name">数据导出状态</div>
       </div>
       <div class="status-body">
         <div class="status-value">{formatExportStatus(state.exportStatus.status)}</div>
         <div class="status-desc">{state.exportStatus.message}</div>
       </div>
       <div class="status-footer">
-        <div class="footer-label">Last Export</div>
+        <div class="footer-label">最近导出时间</div>
         <div class="footer-value">
-          {state.exportStatus.lastExportAt ? formatDate(state.exportStatus.lastExportAt) : 'Never'}
+          {state.exportStatus.lastExportAt ? formatDate(state.exportStatus.lastExportAt) : '从未导出'}
         </div>
         {#if state.exportStatus.lastExportedCount > 0}
-          <div class="footer-sub">({formatNumber(state.exportStatus.lastExportedCount)} sessions)</div>
+          <div class="footer-sub">({formatNumber(state.exportStatus.lastExportedCount)} 个会话)</div>
         {/if}
       </div>
     </div>

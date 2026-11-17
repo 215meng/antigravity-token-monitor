@@ -3,18 +3,18 @@
 
 <aside class="insight-rail">
   <section class="rail-section">
-    <h3 class="section-title">About Metrics</h3>
+    <h3 class="section-title">指标说明</h3>
 
     <div class="info-card">
       <ul class="info-list">
         <li>
-          <span class="highlight">Reported</span> usage comes from structured token fields in the session data.
+          <span class="highlight">真实报告 (Reported)</span> ：直接取自会话中的结构化 Token 字段。
         </li>
         <li>
-          <span class="highlight">Estimated</span> usage is a fallback calculation based on text length when structured data is missing.
+          <span class="highlight">文本估算 (Estimated)</span> ：当缺失结构化数据时基于字符长度的保底计算。
         </li>
         <li>
-          Polling runs in the extension host to keep this dashboard lightweight.
+          监控轮询在扩展后台运行，保持轻量高效。
         </li>
       </ul>
     </div>

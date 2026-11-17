@@ -23,13 +23,15 @@ export function getDefaultSessionRoot(): string {
 export function readConfig(): MonitorConfig {
   const config = vscode.workspace.getConfiguration(EXTENSION_ID);
   const sessionRoot = config.get<string>('sessionRoot')?.trim() || getDefaultSessionRoot();
+  const configuredMaxFileBytes = config.get<number>('maxFileBytes', 50 * 1024 * 1024);
+  const maxFileBytes = configuredMaxFileBytes === 524288 ? 50 * 1024 * 1024 : configuredMaxFileBytes;
 
   return {
     sessionRoot,
     debug: config.get<boolean>('debug', false),
     pollIntervalMs: validateTimeConfig('pollIntervalMs', config.get<number>('pollIntervalMs', 60000), 60000),
     historyLimit: config.get<number>('historyLimit', 120),
-    maxFileBytes: config.get<number>('maxFileBytes', 10 * 1024 * 1024),  // 10MB default to handle large usage.jsonl files
+    maxFileBytes,
     useRpcExport: config.get<boolean>('useRpcExport', true),
     exportStepsJsonl: config.get<boolean>('exportStepsJsonl', false),
     rpcExportIntervalMs: validateTimeConfig('rpcExportIntervalMs', config.get<number>('rpcExportIntervalMs', 300000), 300000),

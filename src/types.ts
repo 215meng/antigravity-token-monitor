@@ -50,6 +50,10 @@ export type SessionScanResult = {
   error?: string;
 };
 
+export type DailyTokenBreakdown = TokenBreakdown & {
+  messageCount: number;
+};
+
 export type SessionTotals = TokenBreakdown & {
   sessionId: string;
   label: string;
@@ -61,6 +65,7 @@ export type SessionTotals = TokenBreakdown & {
   messageCount?: number;
   modelTotals?: Record<string, number>;
   modelBreakdowns?: Record<string, ModelTokenBreakdown>;
+  dailyBreakdowns?: Record<string, DailyTokenBreakdown>;
 };
 
 export type SessionSnapshot = TokenBreakdown & {

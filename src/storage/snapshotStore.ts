@@ -70,13 +70,41 @@ export class SnapshotStore {
       for (const [archiveMonth, sessions] of archivedByMonth) {
         const filePath = this.getArchiveFilePath(archiveMonth);
         expectedArchiveFiles.add(filePath);
-        await fs.writeFile(filePath, JSON.stringify({ sessions }, null, 2), 'utf8');
+        // 合并磁盘上已有的归档数据，绝不无故覆盖丢失历史会话
+        const existingShard = await this.loadJsonFile(filePath);
+        const mergedShard = { ...existingShard?.sessions, ...sessions };
+
+        // 如果某个会话已经重新激活为 active，则从归档分片中剔除
+        for (const activeId of Object.keys(activeSessions)) {
+          delete mergedShard[activeId];
+        }
+
+        if (Object.keys(mergedShard).length > 0) {
+          await fs.writeFile(filePath, JSON.stringify({ sessions: mergedShard }, null, 2), 'utf8');
+        } else {
+          // 如果分片已完全被重新激活清空，才允许移除
+          await fs.unlink(filePath).catch(() => {});
+        }
       }
 
       const existingArchiveFiles = await this.listArchiveFilePaths(storageDir);
-      // Sequential deletion: continue even if some fail
-      for (const filePath of existingArchiveFiles.filter((filePath) => !expectedArchiveFiles.has(filePath))) {
-        await fs.unlink(filePath).catch((err) => console.warn(`[Store] Failed to delete ${filePath}:`, err));
+      // 只有当现有归档分片中的会话全部已激活（或为空）时，才清理空分片，绝不误删历史月份数据
+      for (const filePath of existingArchiveFiles) {
+        if (!expectedArchiveFiles.has(filePath)) {
+          const shard = await this.loadJsonFile(filePath);
+          let hasRemainingArchived = false;
+          if (shard?.sessions) {
+            for (const [sid, sess] of Object.entries(shard.sessions)) {
+              if (!activeSessions[sid] && sess.lifecycle?.status === 'archived') {
+                hasRemainingArchived = true;
+                break;
+              }
+            }
+          }
+          if (!hasRemainingArchived) {
+            await fs.unlink(filePath).catch((err) => console.warn(`[Store] Failed to delete obsolete empty ${filePath}:`, err));
+          }
+        }
       }
     } finally {
       this.saveLock = false;

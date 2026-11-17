@@ -1,7 +1,15 @@
 .vscode/**
 .vscode-test/**
 .github/**
+.agents/**
+.gemini/**
+.serena/**
 .sisyphus/**
+AGENTS.md
+GEMINI.md
+ARCHITECTURE.md
+install-extension.ps1
+scripts/**
 antigravity-storage-manager/**
 coverage/**
 docs/**

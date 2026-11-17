@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as fsp from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { MonitorConfig } from '../config';
@@ -25,12 +27,14 @@ import {
 } from '../types';
 import { SessionScanner } from './sessionScanner';
 import { SessionUsageCalculator } from './sessionUsageCalculator';
+import { deduplicateSessionsFromArtifacts } from './responseDeduplicator';
 import {
   calculateModelCost,
   LiteLlmPricingCatalog,
   type LiteLlmPricingSnapshot
 } from '../pricing/litellmPricing';
 import { PollLock } from './pollLock';
+import { canonicalizeModelId } from '../modelAliases';
 
 type Listener = (state: DashboardState) => void;
 
@@ -68,6 +72,8 @@ export class TokenMonitorService implements vscode.Disposable {
   private exportTimer: NodeJS.Timeout | null = null;
   private emitTimer: NodeJS.Timeout | null = null;
   private manualRefreshTimer: NodeJS.Timeout | null = null;
+  private watchDebounceTimer: NodeJS.Timeout | null = null;
+  private watchers: fs.FSWatcher[] = [];
   private pendingEmit = false;
   private state: PersistedState = { sessions: {} };
   private running = false;
@@ -81,6 +87,7 @@ export class TokenMonitorService implements vscode.Disposable {
 
   private static readonly EMIT_DEBOUNCE_MS = 150;
   private static readonly MANUAL_REFRESH_DELAY_MS = TokenMonitorService.EMIT_DEBOUNCE_MS;
+  private static readonly WATCH_DEBOUNCE_MS = 3000;
 
   constructor(
     private readonly configProvider: () => MonitorConfig,
@@ -93,11 +100,12 @@ export class TokenMonitorService implements vscode.Disposable {
 
   async initialize(): Promise<void> {
     this.state = normalizePersistedState(await this.store.load());
-    await this.refresh();
+    await this.exportNow({ force: false, refreshAfter: true });
     this.stopTimer();
     this.stopExportTimer();
     this.startTimer();
     this.startExportTimer();
+    this.startWatchers();
   }
 
   onDidChange(listener: Listener): vscode.Disposable {
@@ -157,7 +165,7 @@ export class TokenMonitorService implements vscode.Disposable {
     };
   }
 
-  async refresh(options?: { skipExport?: boolean; force?: boolean; selectiveForce?: boolean }): Promise<void> {
+  async refresh(options?: { skipExport?: boolean; force?: boolean; selectiveForce?: boolean; forceExport?: boolean }): Promise<void> {
     if (this.running) {
       this.log('Refresh skipped: service is already running.');
       return;
@@ -165,7 +173,7 @@ export class TokenMonitorService implements vscode.Disposable {
 
     const config = this.configProvider();
     this.log(
-      `Refresh requested: force=${options?.force === true} selectiveForce=${options?.selectiveForce === true} skipExport=${options?.skipExport === true}.`
+      `Refresh requested: force=${options?.force === true} forceExport=${options?.forceExport === true} selectiveForce=${options?.selectiveForce === true} skipExport=${options?.skipExport === true}.`
     );
 
     if (!options?.force) {
@@ -210,7 +218,7 @@ export class TokenMonitorService implements vscode.Disposable {
             try {
               manifests = (await new TrajectoryExporter(config, artifactStore, (message) => this.log(message)).exportChangedSessions(
                 scanResult.sessions,
-                { force: options?.force === true, selectiveForce: options?.selectiveForce === true }
+                { force: options?.forceExport === true, selectiveForce: options?.selectiveForce === true }
               )).manifests;
             } finally {
               exportLock.release();
@@ -233,7 +241,12 @@ export class TokenMonitorService implements vscode.Disposable {
           }
           const previous = this.state.sessions[candidate.sessionId];
 
-          if (previous && previous.signature === parsePlan.analysisSignature && hasPricingBreakdown(previous.latest)) {
+          if (
+            previous
+            && previous.signature === parsePlan.analysisSignature
+            && hasPricingBreakdown(previous.latest)
+            && previous.latest.dailyBreakdowns !== undefined
+          ) {
             this.log(`Refresh reused cached session=${candidate.sessionId} total=${previous.latest.totalTokens}.`);
             // Still add empty snapshot to reset delta for next cycle
             nextSessions[candidate.sessionId] = {
@@ -243,19 +256,87 @@ export class TokenMonitorService implements vscode.Disposable {
             };
             continue;
           }
-          this.log(`DEBUG: maxFileBytes=${config.maxFileBytes} parsePlan.tokenFilePaths=${parsePlan.tokenFilePaths?.join(', ')}`);
           const latest = await parser.parse(parsePlan);
-          const snapshot = this.calculator.calculate(previous, latest, capturedAt);
+          // 安全防护：仅当原本有有效 reported 数据而本次因故障退化为 0 或估算模式时保留历史数据
+          let effectiveLatest = latest;
+          if (
+            previous
+            && previous.latest.mode === 'reported'
+            && previous.latest.totalTokens > 0
+            && (latest.totalTokens === 0 || latest.mode === 'estimated')
+          ) {
+            this.log(
+              `Refresh guard: session=${candidate.sessionId} retained reported previous=${previous.latest.totalTokens} parsed=${latest.totalTokens} mode=${latest.mode}.`
+            );
+            effectiveLatest = previous.latest;
+          }
+          const snapshot = this.calculator.calculate(previous, effectiveLatest, capturedAt);
           this.log(
-            `Refresh parsed session=${candidate.sessionId} source=${parsePlan.source} previousTotal=${previous?.latest.totalTokens ?? 0} latestTotal=${latest.totalTokens} deltaTotal=${snapshot.totalTokens}.`
+            `Refresh parsed session=${candidate.sessionId} source=${parsePlan.source} previousTotal=${previous?.latest.totalTokens ?? 0} latestTotal=${effectiveLatest.totalTokens} deltaTotal=${snapshot.totalTokens}.`
           );
           nextSessions[candidate.sessionId] = {
             signature: parsePlan.analysisSignature,
-            latest,
+            latest: effectiveLatest,
             snapshots: appendSnapshot(previous?.snapshots ?? [], snapshot, config.historyLimit),
             lifecycle: createActiveLifecycle(capturedAt)
           };
       }
+
+        // 确保所有归档会话（包括仅存于 rpc-cache 或归档文件中的历史会话）也被纳入最新解析与统计
+        const cacheRoot = path.join(config.sessionRoot, '.token-monitor', 'rpc-cache', 'v1');
+        try {
+          const cacheDirs = await fsp.readdir(cacheRoot, { withFileTypes: true });
+          for (const entry of cacheDirs) {
+            if (!entry.isDirectory() || seenIds.has(entry.name)) {
+              continue;
+            }
+            const archivedId = entry.name;
+            const existing = nextSessions[archivedId];
+            if (existing?.latest.dailyBreakdowns) {
+              nextSessions[archivedId] = archivePersistedSession(existing, existing.lifecycle.archivedAt ?? capturedAt);
+              seenIds.add(archivedId);
+              continue;
+            }
+            const usagePath = path.join(cacheRoot, archivedId, 'usage.jsonl');
+            const stepsPath = path.join(cacheRoot, archivedId, 'steps.jsonl');
+            const manifest = artifactStore ? await artifactStore.loadManifest(archivedId) : null;
+            const tokenFilePaths: string[] = [];
+            try {
+              const uStat = await fsp.stat(usagePath);
+              if (uStat.isFile() && uStat.size > 0) tokenFilePaths.push(usagePath);
+            } catch {}
+            try {
+              const sStat = await fsp.stat(stepsPath);
+              if (sStat.isFile() && sStat.size > 0) tokenFilePaths.push(stepsPath);
+            } catch {}
+            if (tokenFilePaths.length === 0) {
+              continue;
+            }
+            const lastMod = manifest?.serverLastModifiedMs ?? existing?.latest.lastModifiedMs ?? capturedAt;
+            const parsedArchived = await parser.parse({
+              sessionId: archivedId,
+              sessionDir: path.join(config.sessionRoot, 'brain', archivedId),
+              labelHint: existing?.latest.label ?? archivedId,
+              lastModifiedMs: lastMod,
+              tokenFilePaths,
+              analysisSignature: manifest?.artifactHash ?? 'archived',
+              source: 'rpc-artifact'
+            });
+            const effectiveArchived = existing && existing.latest.mode === 'reported' && parsedArchived.totalTokens === 0
+              ? existing.latest
+              : parsedArchived;
+            nextSessions[archivedId] = {
+              signature: manifest?.artifactHash ?? existing?.signature ?? 'archived',
+              latest: effectiveArchived,
+              snapshots: existing?.snapshots ?? [this.calculator.calculate(undefined, effectiveArchived, lastMod)],
+              lifecycle: existing?.lifecycle.status === 'archived'
+                ? existing.lifecycle
+                : { status: 'archived', lastSeenAt: lastMod, archivedAt: existing?.lifecycle.archivedAt ?? capturedAt }
+            };
+            seenIds.add(archivedId);
+          }
+        } catch {
+        }
 
         for (const sessionId of Object.keys(nextSessions)) {
           if (!seenIds.has(sessionId)) {
@@ -263,13 +344,16 @@ export class TokenMonitorService implements vscode.Disposable {
           }
         }
 
+        // 跨会话克隆去重 + 撤回历史分支补齐 + 每日真实日期核算
+        const deduplicatedSessions = await deduplicateSessionsFromArtifacts(nextSessions, config.sessionRoot);
+
         if (filesystemFallbackCandidates > 0) {
           this.log(`Refresh used filesystem fallback for ${filesystemFallbackCandidates} session candidate(s).`);
         }
 
         this.state = {
           lastPollAt: capturedAt,
-          sessions: nextSessions
+          sessions: deduplicatedSessions
       };
       this.lastError = undefined;
       this.log(`Refresh completed: trackedSessions=${Object.keys(nextSessions).length} capturedAt=${capturedAt}.`);
@@ -297,8 +381,8 @@ export class TokenMonitorService implements vscode.Disposable {
   }
 
   async refreshNow(): Promise<number> {
-    const exportedCount = await this.runExportCycle({ selectiveForce: true });
-    await this.refresh({ skipExport: true, force: true, selectiveForce: true });
+    const exportedCount = await this.runExportCycle({ force: false });
+    await this.refresh({ skipExport: true, force: true });
     return exportedCount;
   }
 
@@ -313,9 +397,11 @@ export class TokenMonitorService implements vscode.Disposable {
   restart(): void {
     this.stopTimer();
     this.stopExportTimer();
+    this.stopWatchers();
     this.startTimer();
     this.startExportTimer();
-    void this.refresh({ force: true });
+    this.startWatchers();
+    void this.exportNow({ force: false, refreshAfter: true });
   }
 
   async resetCache(): Promise<number> {
@@ -341,6 +427,11 @@ export class TokenMonitorService implements vscode.Disposable {
   dispose(): void {
     this.stopTimer();
     this.stopExportTimer();
+    this.stopWatchers();
+    if (this.watchDebounceTimer) {
+      clearTimeout(this.watchDebounceTimer);
+      this.watchDebounceTimer = null;
+    }
     if (this.manualRefreshTimer) {
       clearTimeout(this.manualRefreshTimer);
       this.manualRefreshTimer = null;
@@ -356,8 +447,55 @@ export class TokenMonitorService implements vscode.Disposable {
     this.stopTimer(); // Prevent interval accumulation on re-init
     const { pollIntervalMs } = this.configProvider();
     this.timer = setInterval(() => {
-      void this.refresh();
+      void this.exportNow({ force: false, refreshAfter: true });
     }, pollIntervalMs);
+  }
+
+  private startWatchers(): void {
+    this.stopWatchers();
+    const { sessionRoot } = this.configProvider();
+    const watchTargets = [
+      path.join(sessionRoot, 'conversations'),
+      path.join(sessionRoot, 'brain')
+    ];
+
+    for (const dirPath of watchTargets) {
+      try {
+        if (!fs.existsSync(dirPath)) {
+          continue;
+        }
+        const watcher = fs.watch(dirPath, { persistent: false }, (_eventType, filename) => {
+          if (typeof filename === 'string' && /\.(db|db-wal|pb)$/i.test(filename)) {
+            this.scheduleWatchRefresh();
+          } else if (dirPath.endsWith('brain')) {
+            this.scheduleWatchRefresh();
+          }
+        });
+        watcher.on('error', () => {});
+        this.watchers.push(watcher);
+      } catch {
+      }
+    }
+  }
+
+  private stopWatchers(): void {
+    for (const watcher of this.watchers) {
+      try {
+        watcher.close();
+      } catch {
+      }
+    }
+    this.watchers = [];
+  }
+
+  private scheduleWatchRefresh(): void {
+    if (this.watchDebounceTimer) {
+      clearTimeout(this.watchDebounceTimer);
+    }
+    this.watchDebounceTimer = setTimeout(() => {
+      this.watchDebounceTimer = null;
+      void this.exportNow({ force: false, refreshAfter: true });
+    }, TokenMonitorService.WATCH_DEBOUNCE_MS);
   }
 
   private startExportTimer(): void {
@@ -732,7 +870,36 @@ function buildDashboardAnalytics(
       modeBreakdown[mode].changedSessionCount += 1;
     }
 
-    if (latest.totalTokens > 0) {
+    if (latest.dailyBreakdowns && Object.keys(latest.dailyBreakdowns).length > 0) {
+      for (const [dateKey, dayBreakdown] of Object.entries(latest.dailyBreakdowns)) {
+        if (dayBreakdown.totalTokens <= 0) {
+          continue;
+        }
+        const bucket = heatmapBuckets.get(dateKey);
+        if (!bucket) {
+          heatmapBuckets.set(dateKey, {
+            totalTokens: dayBreakdown.totalTokens,
+            inputTokens: dayBreakdown.inputTokens,
+            outputTokens: dayBreakdown.outputTokens,
+            cacheReadTokens: dayBreakdown.cacheReadTokens,
+            cacheWriteTokens: dayBreakdown.cacheWriteTokens,
+            reasoningTokens: dayBreakdown.reasoningTokens,
+            costUsd: 0,
+            messageCount: dayBreakdown.messageCount ?? 0,
+            sessionIds: new Set([latest.sessionId])
+          });
+        } else {
+          bucket.totalTokens += dayBreakdown.totalTokens;
+          bucket.inputTokens += dayBreakdown.inputTokens;
+          bucket.outputTokens += dayBreakdown.outputTokens;
+          bucket.cacheReadTokens += dayBreakdown.cacheReadTokens;
+          bucket.cacheWriteTokens += dayBreakdown.cacheWriteTokens;
+          bucket.reasoningTokens += dayBreakdown.reasoningTokens;
+          bucket.messageCount += dayBreakdown.messageCount ?? 0;
+          bucket.sessionIds.add(latest.sessionId);
+        }
+      }
+    } else if (latest.totalTokens > 0) {
       const date = new Date(latest.lastModifiedMs);
       const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       const bucket = heatmapBuckets.get(dateKey);
@@ -761,7 +928,8 @@ function buildDashboardAnalytics(
     }
 
     if (persisted.latest.modelBreakdowns) {
-      for (const [model, breakdown] of Object.entries(persisted.latest.modelBreakdowns)) {
+      for (const [rawModel, breakdown] of Object.entries(persisted.latest.modelBreakdowns)) {
+        const model = canonicalizeModelId(rawModel);
         const next = modelTotals.get(model) ?? emptyModelAccumulator();
         next.totalTokens += breakdown.totalTokens;
         next.sessionIds.add(persisted.latest.sessionId);
@@ -774,10 +942,11 @@ function buildDashboardAnalytics(
         modelTotals.set(model, next);
       }
     } else if (persisted.latest.modelTotals) {
-      for (const [model, total] of Object.entries(persisted.latest.modelTotals)) {
+      for (const [rawModel, total] of Object.entries(persisted.latest.modelTotals)) {
         if (total <= 0) {
           continue;
         }
+        const model = canonicalizeModelId(rawModel);
         const next = modelTotals.get(model) ?? emptyModelAccumulator();
         next.totalTokens += total;
         next.sessionIds.add(persisted.latest.sessionId);
@@ -811,7 +980,7 @@ function buildDashboardAnalytics(
     });
   }
 
-  const unavailableNote = pricingSnapshot ? 'No LiteLLM pricing match.' : pricingError ?? 'LiteLLM pricing data unavailable.';
+  const unavailableNote = pricingSnapshot ? '未匹配 LiteLLM 价格表' : pricingError ?? 'LiteLLM 定价数据不可用';
   const modelUsage = Array.from(modelTotals.entries())
     .map(([model, accumulator]): ModelUsageBreakdown => {
       const costResult = calculateModelCost(
@@ -920,12 +1089,12 @@ function buildPricingMessage(
   }
 
   if (missingModelCount > 0) {
-    return `Priced ${pricedModelCount} model${pricedModelCount === 1 ? '' : 's'}; ${missingModelCount} unmatched.`;
+    return `已匹配 ${pricedModelCount} 种模型定价；${missingModelCount} 种未匹配`;
   }
 
   if (pricedModelCount === 0) {
-    return 'LiteLLM pricing loaded, but no models are priceable yet.';
+    return '已加载 LiteLLM 定价，但暂无可定价的模型';
   }
 
-  return `LiteLLM pricing loaded for ${pricedModelCount} model${pricedModelCount === 1 ? '' : 's'}.`;
+  return `已成功加载 ${pricedModelCount} 种模型的 LiteLLM 定价`;
 }

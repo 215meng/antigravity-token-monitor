@@ -10,20 +10,20 @@
 
 <article class="analytical-table-container">
   <div class="table-header">
-    <h2 class="section-title">Session Analysis</h2>
-    <div class="table-meta">Sorted by recent activity</div>
+    <h2 class="section-title">会话明细分析</h2>
+    <div class="table-meta">按最近活跃时间排序</div>
   </div>
 
   <div class="table-scroll-area">
     <table class="data-table">
       <thead>
         <tr>
-          <th class="col-session">Session</th>
-          <th class="col-mode">Mode</th>
-          <th class="col-messages num">Messages</th>
-          <th class="col-total num">Total Tokens</th>
-          <th class="col-delta num">Latest Delta</th>
-          <th class="col-pulse">Activity Pulse</th>
+          <th class="col-session">会话名称</th>
+          <th class="col-mode">状态与模式</th>
+          <th class="col-messages num">消息数</th>
+          <th class="col-total num">Token 总量</th>
+          <th class="col-delta num">最近增量</th>
+          <th class="col-pulse">活跃脉冲</th>
         </tr>
       </thead>
       <tbody>
@@ -37,7 +37,7 @@
                     <span>{formatDate(session.lastModifiedMs)}</span>
                     {#if session.status === 'archived'}
                       <span class="dot-separator">•</span>
-                      <span>Last seen {formatDate(session.lastSeenAt)}</span>
+                      <span>最近活跃于 {formatDate(session.lastSeenAt)}</span>
                     {/if}
                   </div>
                 </div>
@@ -45,9 +45,9 @@
               <td class="col-mode">
                 <div class="tags">
                   <span class:tag={true} class:status-archived={session.status === 'archived'}>
-                    {session.status}
+                    {session.status === 'active' ? '活跃' : '已归档'}
                   </span>
-                  <span class="tag mode-{session.mode}">{session.mode}</span>
+                  <span class="tag mode-{session.mode}">{session.mode === 'reported' ? '真实报告' : '文本估算'}</span>
                   <span class="tag source-{session.source}">{formatSource(session.source)}</span>
                 </div>
               </td>
@@ -74,8 +74,8 @@
         {:else}
           <tr>
             <td colspan="6" class="empty-state">
-              <div class="empty-message">No Antigravity sessions found yet.</div>
-              <div class="empty-submessage">Check the session root and wait for the next poll.</div>
+              <div class="empty-message">暂无 Antigravity 会话数据</div>
+              <div class="empty-submessage">请检查会话目录并等待下一次自动采集轮询</div>
             </td>
           </tr>
         {/if}

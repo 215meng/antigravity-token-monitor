@@ -31,13 +31,22 @@ export class RpcArtifactStore {
     const results = await Promise.all(candidates.map(async (filePath) => {
       try {
         const stat = await fs.stat(filePath);
-        return stat.isFile() ? filePath : null;
+        return stat.isFile() && stat.size > 0 ? filePath : null;
       } catch {
         return null;
       }
     }));
 
     return results.filter((value): value is string => value !== null);
+  }
+
+  async hasNonEmptyUsage(sessionId: string): Promise<boolean> {
+    try {
+      const stat = await fs.stat(this.getUsagePath(sessionId));
+      return stat.isFile() && stat.size > 0;
+    } catch {
+      return false;
+    }
   }
 
   async writeSessionArtifacts(payload: ArtifactPayload): Promise<RpcArtifactManifest> {

@@ -15,7 +15,7 @@ describe('SidebarApp', () => {
 
   it('renders loading state initially', () => {
     const { getByText } = render(SidebarApp);
-    expect(getByText('Loading token data...')).toBeTruthy();
+    expect(getByText('正在加载 Token 数据...')).toBeTruthy();
   });
 
   it('renders sidebar shell with all sections when state is provided', () => {
@@ -23,32 +23,32 @@ describe('SidebarApp', () => {
     const { getByText, container } = render(SidebarApp);
 
     // Header
-    expect(getByText('Token Overview')).toBeTruthy();
+    expect(getByText('Token 用量简报')).toBeTruthy();
 
     // KPI section
-    expect(getByText('Total Tokens')).toBeTruthy();
-    expect(getByText('Active')).toBeTruthy();
-    expect(getByText('Messages')).toBeTruthy();
-    expect(getByText('Cost')).toBeTruthy();
+    expect(getByText('Token 总消耗量')).toBeTruthy();
+    expect(getByText('活跃会话')).toBeTruthy();
+    expect(getByText('消息数')).toBeTruthy();
+    expect(getByText('预估成本')).toBeTruthy();
 
     // Token Breakdown section
-    expect(getByText('Token Breakdown')).toBeTruthy();
-    expect(getByText('Input')).toBeTruthy();
-    expect(getByText('Output')).toBeTruthy();
+    expect(getByText('Token 构成细分')).toBeTruthy();
+    expect(getByText('输入')).toBeTruthy();
+    expect(getByText('输出')).toBeTruthy();
 
     // Model Usage section
-    expect(getByText('Model Usage')).toBeTruthy();
+    expect(getByText('模型使用分布')).toBeTruthy();
     expect(getByText('mock-model')).toBeTruthy();
 
     // Heatmap section
-    expect(getByText('Last 30 Days')).toBeTruthy();
+    expect(getByText('最近 30 天')).toBeTruthy();
 
     // Session List section
-    expect(getByText('Sessions')).toBeTruthy();
+    expect(getByText('最近活跃会话')).toBeTruthy();
     expect(getByText('Session 1')).toBeTruthy();
 
     // Sync Status section
-    expect(getByText('Status')).toBeTruthy();
+    expect(getByText('运行状态')).toBeTruthy();
 
     // Verify sidebar-specific structure
     const shell = container.querySelector('.sidebar-shell');
@@ -74,12 +74,12 @@ describe('SidebarApp', () => {
     dashboardState.set(mockDashboardState);
     const { getByText } = render(SidebarApp);
     // mockDashboardState has 1 estimated session
-    expect(getByText(/1 estimated/)).toBeTruthy();
+    expect(getByText(/1 个估算/)).toBeTruthy();
   });
 
   it('shows archived sessions info', () => {
     dashboardState.set(mockDashboardState);
     const { getByText } = render(SidebarApp);
-    expect(getByText(/1 archived/)).toBeTruthy();
+    expect(getByText(/1 个归档/)).toBeTruthy();
   });
 });
