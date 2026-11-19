@@ -13,8 +13,10 @@ const PLACEHOLDER_MODEL_MAP: Record<string, string> = {
   'MODEL_PLACEHOLDER_M527': 'gemini-4-hydrogen',
   'MODEL_PLACEHOLDER_M528': 'gemini-4-hydrogen',
   'MODEL_PLACEHOLDER_M530': 'gemini-4-hydrogen',
-  'MODEL_PLACEHOLDER_M670': 'gemini-4-carbon',
+  'MODEL_PLACEHOLDER_M537': 'orchestrator-neon',
   'MODEL_PLACEHOLDER_M668': 'orchestrator-argon',
+  'MODEL_PLACEHOLDER_M669': 'gemini-4-hydrogen-orchestrator',
+  'MODEL_PLACEHOLDER_M670': 'gemini-4-carbon',
 
   // Gemini 3.8 Series
   'MODEL_PLACEHOLDER_M318': 'gemini-3.8-flash',
@@ -146,12 +148,35 @@ export function canonicalizeModelId(rawModel?: string): string {
   const fromPlaceholder = resolveModelPlaceholder(trimmed);
   const normalized = (fromPlaceholder ?? trimmed).toLowerCase();
 
-  // Orchestrator (Argon) — 必须在通用 gemini.*pro 判断之前识别
-  if (/orchestrator|m668/i.test(normalized)) {
+  // Gemini 4 Hydrogen (Orchestrator Worker) — 必须在通用 orchestrator 与 hydrogen 判断之前识别
+  if (/gemini.*4.*hydrogen.*orchestrator|gemini-flash-worker|m669/i.test(normalized)) {
+    return 'gemini-4-hydrogen-orchestrator';
+  }
+
+  // Orchestrator (Neon)
+  if (/orchestrator.*neon|m537/i.test(normalized)) {
+    return 'orchestrator-neon';
+  }
+
+  // Orchestrator (Argon)
+  if (/orchestrator.*(argon|g1)|m668/i.test(normalized)) {
+    return 'orchestrator-argon';
+  }
+
+  // 动态兼容未来其他 Orchestrator 变体
+  const dynamicOrchestratorMatch = normalized.match(/orchestrator[\s(_-]+([a-z0-9]+)/i);
+  if (dynamicOrchestratorMatch?.[1]) {
+    return `orchestrator-${dynamicOrchestratorMatch[1].toLowerCase()}`;
+  }
+  if (/orchestrator/i.test(normalized)) {
     return 'orchestrator-argon';
   }
 
   // Gemini 4 Series
+  if (/gemini.*4.*neon|\bneon\b/i.test(normalized)) {
+    return 'gemini-4-neon';
+  }
+
   if (/gemini.*4.*argon|\bargon\b|m417|m418|m419/i.test(normalized)) {
     return 'gemini-4-argon';
   }
@@ -162,6 +187,12 @@ export function canonicalizeModelId(rawModel?: string): string {
 
   if (/gemini.*4.*carbon|\bcarbon\b|m670/i.test(normalized)) {
     return 'gemini-4-carbon';
+  }
+
+  // 动态兼容未来新推出的 Gemini 4 <Element> 家族（如 Gemini 4 Helium (Medium)）
+  const dynamicGemini4Match = normalized.match(/gemini[\s._-]*4[\s._-]+([a-z]+)/i);
+  if (dynamicGemini4Match?.[1]) {
+    return `gemini-4-${dynamicGemini4Match[1].toLowerCase()}`;
   }
 
   // Claude 5.5 Series
@@ -253,9 +284,12 @@ export function formatModelDisplayName(model?: string): string {
   const canonical = canonicalizeModelId(model);
 
   const DISPLAY_MAP: Record<string, string> = {
+    'gemini-4-neon': 'Gemini 4 Neon',
     'gemini-4-argon': 'Gemini 4 Argon',
     'gemini-4-hydrogen': 'Gemini 4 Hydrogen',
     'gemini-4-carbon': 'Gemini 4 Carbon',
+    'gemini-4-hydrogen-orchestrator': 'Gemini 4 Hydrogen (Orchestrator)',
+    'orchestrator-neon': 'Orchestrator (Neon)',
     'orchestrator-argon': 'Orchestrator (Argon)',
     'claude-opus-5-5': 'Claude Opus 5.5',
     'claude-sonnet-5-5': 'Claude Sonnet 5.5',
@@ -287,5 +321,21 @@ export function formatModelDisplayName(model?: string): string {
     'deepseek-reasoner': 'DeepSeek-R1',
   };
 
-  return DISPLAY_MAP[canonical] ?? canonical;
+  if (DISPLAY_MAP[canonical]) {
+    return DISPLAY_MAP[canonical];
+  }
+
+  const orchestratorMatch = canonical.match(/^orchestrator-([a-z0-9]+)$/i);
+  if (orchestratorMatch?.[1]) {
+    const element = orchestratorMatch[1];
+    return `Orchestrator (${element.charAt(0).toUpperCase()}${element.slice(1)})`;
+  }
+
+  const gemini4Match = canonical.match(/^gemini-4-([a-z]+)$/i);
+  if (gemini4Match?.[1]) {
+    const element = gemini4Match[1];
+    return `Gemini 4 ${element.charAt(0).toUpperCase()}${element.slice(1)}`;
+  }
+
+  return canonical;
 }

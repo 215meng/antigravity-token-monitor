@@ -37,6 +37,14 @@ export type ModelCostResult = {
  */
 export const BASELINE_MODEL_PRICING: Record<string, LiteLlmModelPricing> = {
   // Gemini 4 Series & Orchestrator
+  'gemini-4-neon': {
+    input_cost_per_token: 0.0000025,
+    prompt_cost_per_token: 0.0000025,
+    output_cost_per_token: 0.00001,
+    completion_cost_per_token: 0.00001,
+    cache_read_input_token_cost: 0.000000625,
+    input_cost_per_token_cache_hit: 0.000000625
+  },
   'gemini-4-argon': {
     input_cost_per_token: 0.00000125,
     prompt_cost_per_token: 0.00000125,
@@ -53,7 +61,23 @@ export const BASELINE_MODEL_PRICING: Record<string, LiteLlmModelPricing> = {
     cache_read_input_token_cost: 0.0000000375,
     input_cost_per_token_cache_hit: 0.0000000375
   },
+  'gemini-4-hydrogen-orchestrator': {
+    input_cost_per_token: 0.00000015,
+    prompt_cost_per_token: 0.00000015,
+    output_cost_per_token: 0.0000006,
+    completion_cost_per_token: 0.0000006,
+    cache_read_input_token_cost: 0.0000000375,
+    input_cost_per_token_cache_hit: 0.0000000375
+  },
   'gemini-4-carbon': {
+    input_cost_per_token: 0.0000025,
+    prompt_cost_per_token: 0.0000025,
+    output_cost_per_token: 0.00001,
+    completion_cost_per_token: 0.00001,
+    cache_read_input_token_cost: 0.000000625,
+    input_cost_per_token_cache_hit: 0.000000625
+  },
+  'orchestrator-neon': {
     input_cost_per_token: 0.0000025,
     prompt_cost_per_token: 0.0000025,
     output_cost_per_token: 0.00001,

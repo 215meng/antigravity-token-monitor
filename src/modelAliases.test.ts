@@ -117,4 +117,35 @@ describe('modelAliases', () => {
     expect(formatModelDisplayName('claude-sonnet-5-5-medium')).toBe('Claude Sonnet 5.5');
     expect(formatModelDisplayName('MODEL_OPENAI_GPT_OSS_120B_MEDIUM')).toBe('GPT-OSS 120B (Medium)');
   });
+
+  it('resolves and canonicalizes Gemini 4 Neon, Orchestrator (Neon), Orchestrator Worker, and dynamic Gemini 4 models', () => {
+    expect(resolveModelPlaceholder('MODEL_PLACEHOLDER_M537')).toBe('orchestrator-neon');
+    expect(resolveModelPlaceholder('1537')).toBe('orchestrator-neon');
+    expect(resolveModelPlaceholder('MODEL_PLACEHOLDER_M669')).toBe('gemini-4-hydrogen-orchestrator');
+    expect(resolveModelPlaceholder('1669')).toBe('gemini-4-hydrogen-orchestrator');
+
+    expect(canonicalizeModelId('gemini-4-neon')).toBe('gemini-4-neon');
+    expect(canonicalizeModelId('gemini-4-neon-medium')).toBe('gemini-4-neon');
+    expect(canonicalizeModelId('Gemini 4 Neon (Medium)')).toBe('gemini-4-neon');
+    expect(canonicalizeModelId('gemini-pro-orchestrator-neon')).toBe('orchestrator-neon');
+    expect(canonicalizeModelId('Orchestrator (Neon)')).toBe('orchestrator-neon');
+    expect(canonicalizeModelId('MODEL_PLACEHOLDER_M537')).toBe('orchestrator-neon');
+    expect(canonicalizeModelId('gemini-flash-worker-agy')).toBe('gemini-4-hydrogen-orchestrator');
+    expect(canonicalizeModelId('Gemini 4 Hydrogen (Orchestrator)')).toBe('gemini-4-hydrogen-orchestrator');
+    expect(canonicalizeModelId('MODEL_PLACEHOLDER_M669')).toBe('gemini-4-hydrogen-orchestrator');
+
+    // 确保 Argon 不会被 Neon 覆盖或串类
+    expect(canonicalizeModelId('gemini-pro-orchestrator-g1-pro')).toBe('orchestrator-argon');
+    expect(canonicalizeModelId('Orchestrator (Argon)')).toBe('orchestrator-argon');
+
+    // 动态兼容未来 Gemini 4 / Orchestrator 新元素模型
+    expect(canonicalizeModelId('Gemini 4 Helium (High)')).toBe('gemini-4-helium');
+    expect(canonicalizeModelId('Orchestrator (Carbon)')).toBe('orchestrator-carbon');
+
+    expect(formatModelDisplayName('gemini-4-neon-medium')).toBe('Gemini 4 Neon');
+    expect(formatModelDisplayName('gemini-pro-orchestrator-neon')).toBe('Orchestrator (Neon)');
+    expect(formatModelDisplayName('gemini-flash-worker-agy')).toBe('Gemini 4 Hydrogen (Orchestrator)');
+    expect(formatModelDisplayName('Gemini 4 Helium (High)')).toBe('Gemini 4 Helium');
+    expect(formatModelDisplayName('Orchestrator (Carbon)')).toBe('Orchestrator (Carbon)');
+  });
 });

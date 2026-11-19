@@ -236,4 +236,30 @@ describe('litellmPricing', () => {
     expect(BASELINE_MODEL_PRICING['deepseek-chat'].prompt_cost_per_token).toBe(0.00000027);
     expect(BASELINE_MODEL_PRICING['o3-mini'].prompt_cost_per_token).toBe(0.0000011);
   });
+
+  it('provides baseline pricing and cost calculation for Gemini 4 Neon, Orchestrator (Neon), and Orchestrator Worker', () => {
+    const catalog = new LiteLlmPricingCatalog();
+
+    const neon = catalog.resolveModelPricing('gemini-4-neon');
+    expect(neon).toBeDefined();
+    expect(neon?.input_cost_per_token).toBe(0.0000025);
+    expect(neon?.output_cost_per_token).toBe(0.00001);
+
+    const orchNeon = catalog.resolveModelPricing('orchestrator-neon');
+    expect(orchNeon).toBeDefined();
+    expect(orchNeon?.input_cost_per_token).toBe(0.0000025);
+
+    const hydrogenOrch = catalog.resolveModelPricing('gemini-4-hydrogen-orchestrator');
+    expect(hydrogenOrch).toBeDefined();
+    expect(hydrogenOrch?.input_cost_per_token).toBe(0.00000015);
+    expect(hydrogenOrch?.output_cost_per_token).toBe(0.0000006);
+
+    const cost = calculateModelCost(
+      { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 10000, cacheWriteTokens: 0, reasoningTokens: 50, totalTokens: 11150 },
+      neon,
+      'Unpriced'
+    );
+    expect(cost.pricingStatus).toBe('priced');
+    expect(cost.costUsd).toBeCloseTo(1000 * 0.0000025 + 150 * 0.00001 + 10000 * 0.000000625);
+  });
 });
