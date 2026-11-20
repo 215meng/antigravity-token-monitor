@@ -528,10 +528,18 @@ function buildDailyBreakdownsFromEntries(
     }
     const effectiveTs = ts ?? fallbackModifiedMs;
     const dateKey = formatLocalDateKey(effectiveTs);
-    const bucket = daily[dateKey] ?? { ...emptyBreakdown(), messageCount: 0 };
+    const bucket = daily[dateKey] ?? { ...emptyBreakdown(), messageCount: 0, modelBreakdowns: {} };
     mergeBreakdown(bucket, entry.breakdown);
     bucket.totalTokens = normalizeTotal(bucket);
     bucket.messageCount += 1;
+
+    const canonicalModel = canonicalizeModelId(entry.model);
+    bucket.modelBreakdowns ??= {};
+    const modelBucket = bucket.modelBreakdowns[canonicalModel] ?? emptyBreakdown();
+    mergeBreakdown(modelBucket, entry.breakdown);
+    modelBucket.totalTokens = normalizeTotal(modelBucket);
+    bucket.modelBreakdowns[canonicalModel] = modelBucket;
+
     daily[dateKey] = bucket;
   }
 

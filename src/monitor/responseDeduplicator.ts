@@ -124,7 +124,7 @@ export async function deduplicateSessionsFromArtifacts(
 
         mergeInto(totals, record.breakdown);
         addModelBreakdown(modelBreakdowns, modelTotals, canonicalModel, record.breakdown);
-        addDailyBreakdown(dailyBreakdowns, callTimestamp, record.breakdown);
+        addDailyBreakdown(dailyBreakdowns, callTimestamp, record.breakdown, canonicalModel);
         if (canonicalModel !== 'unknown') {
           modelUsageCounts.set(canonicalModel, (modelUsageCounts.get(canonicalModel) ?? 0) + record.breakdown.totalTokens);
         }
@@ -147,7 +147,7 @@ export async function deduplicateSessionsFromArtifacts(
       };
       mergeInto(totals, revertedBreakdown);
       addModelBreakdown(modelBreakdowns, modelTotals, fallbackModel, revertedBreakdown);
-      addDailyBreakdown(dailyBreakdowns, tr.timestamp || persisted.latest.lastModifiedMs, revertedBreakdown);
+      addDailyBreakdown(dailyBreakdowns, tr.timestamp || persisted.latest.lastModifiedMs, revertedBreakdown, fallbackModel);
       evidenceCount += 1;
     }
 
@@ -556,16 +556,24 @@ function addModelBreakdown(
 function addDailyBreakdown(
   dailyBreakdowns: Record<string, DailyTokenBreakdown>,
   timestampMs: number,
-  breakdown: TokenBreakdown
+  breakdown: TokenBreakdown,
+  model?: string
 ): void {
   if (!timestampMs || !Number.isFinite(timestampMs) || timestampMs <= 0) {
     return;
   }
   const dateKey = formatLocalDateKey(timestampMs);
-  const bucket = dailyBreakdowns[dateKey] ?? { ...emptyBreakdown(), messageCount: 0 };
+  const bucket = dailyBreakdowns[dateKey] ?? { ...emptyBreakdown(), messageCount: 0, modelBreakdowns: {} };
   mergeInto(bucket, breakdown);
   bucket.totalTokens = normalizeTotal(bucket);
   bucket.messageCount += 1;
+  if (model) {
+    bucket.modelBreakdowns ??= {};
+    const modelBucket = bucket.modelBreakdowns[model] ?? emptyBreakdown();
+    mergeInto(modelBucket, breakdown);
+    modelBucket.totalTokens = normalizeTotal(modelBucket);
+    bucket.modelBreakdowns[model] = modelBucket;
+  }
   dailyBreakdowns[dateKey] = bucket;
 }
 

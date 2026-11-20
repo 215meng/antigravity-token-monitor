@@ -6,6 +6,7 @@ import { resolveParsePlan } from '../src/monitor/sourceResolver';
 import { RpcArtifactStore } from '../src/storage/rpcArtifactStore';
 import { TrajectoryExporter } from '../src/rpc/trajectoryExporter';
 import { LiteLlmPricingCatalog, calculateModelCost } from '../src/pricing/litellmPricing';
+import { canonicalizeModelId } from '../src/modelAliases';
 import { MonitorConfig } from '../src/config';
 import { SessionTotals } from '../src/types';
 
@@ -96,6 +97,11 @@ async function main() {
   console.log('\n[3/4] Parsing token usage across sessions...');
   const parser = new AntigravitySessionParser(config.maxFileBytes);
   const pricingCatalog = new LiteLlmPricingCatalog();
+  try {
+    await pricingCatalog.getSnapshot();
+  } catch (err) {
+    console.warn('[Pricing] Remote LiteLLM pricing fetch unavailable, using baseline catalog.');
+  }
 
   const dailyMap = new Map<string, DailySummary>();
   const modelMap = new Map<string, ModelSummary>();
@@ -143,7 +149,8 @@ async function main() {
       // Cost calculation
       let sessionCost = 0;
       if (sessionTotals.modelBreakdowns) {
-        for (const [model, breakdown] of Object.entries(sessionTotals.modelBreakdowns)) {
+        for (const [rawModel, breakdown] of Object.entries(sessionTotals.modelBreakdowns)) {
+          const model = canonicalizeModelId(rawModel);
           const pricing = pricingCatalog.resolveModelPricing(model);
           const costResult = calculateModelCost(breakdown, pricing, `Pricing unavailable for ${model}`);
           if (costResult.costUsd) {

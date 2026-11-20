@@ -20,6 +20,7 @@ import {
   SessionTotals,
   SourceBreakdown,
   ModeBreakdown,
+  ModelTokenBreakdown,
   TokenMode,
   TokenSource,
   ModelUsageBreakdown,
@@ -48,6 +49,7 @@ type BucketAccumulator = {
   costUsd: number;
   messageCount: number;
   sessionIds: Set<string>;
+  modelBreakdowns: Map<string, ModelTokenBreakdown>;
 };
 
 type ModelAccumulator = {
@@ -245,7 +247,7 @@ export class TokenMonitorService implements vscode.Disposable {
             previous
             && previous.signature === parsePlan.analysisSignature
             && hasPricingBreakdown(previous.latest)
-            && previous.latest.dailyBreakdowns !== undefined
+            && hasDailyModelBreakdowns(previous.latest)
           ) {
             this.log(`Refresh reused cached session=${candidate.sessionId} total=${previous.latest.totalTokens}.`);
             // Still add empty snapshot to reset delta for next cycle
@@ -292,7 +294,7 @@ export class TokenMonitorService implements vscode.Disposable {
             }
             const archivedId = entry.name;
             const existing = nextSessions[archivedId];
-            if (existing?.latest.dailyBreakdowns) {
+            if (existing && hasDailyModelBreakdowns(existing.latest)) {
               nextSessions[archivedId] = archivePersistedSession(existing, existing.lifecycle.archivedAt ?? capturedAt);
               seenIds.add(archivedId);
               continue;
@@ -711,6 +713,18 @@ function hasPricingBreakdown(latest: SessionTotals): boolean {
   return latest.mode !== 'estimated' && latest.modelBreakdowns !== undefined;
 }
 
+function hasDailyModelBreakdowns(latest: SessionTotals): boolean {
+  if (latest.dailyBreakdowns === undefined) {
+    return false;
+  }
+  for (const day of Object.values(latest.dailyBreakdowns)) {
+    if (day.totalTokens > 0 && !day.modelBreakdowns) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function normalizePersistedState(state: PersistedState): PersistedState {
   return {
     lastPollAt: state.lastPollAt,
@@ -875,56 +889,26 @@ function buildDashboardAnalytics(
         if (dayBreakdown.totalTokens <= 0) {
           continue;
         }
-        const bucket = heatmapBuckets.get(dateKey);
-        if (!bucket) {
-          heatmapBuckets.set(dateKey, {
-            totalTokens: dayBreakdown.totalTokens,
-            inputTokens: dayBreakdown.inputTokens,
-            outputTokens: dayBreakdown.outputTokens,
-            cacheReadTokens: dayBreakdown.cacheReadTokens,
-            cacheWriteTokens: dayBreakdown.cacheWriteTokens,
-            reasoningTokens: dayBreakdown.reasoningTokens,
-            costUsd: 0,
-            messageCount: dayBreakdown.messageCount ?? 0,
-            sessionIds: new Set([latest.sessionId])
-          });
-        } else {
-          bucket.totalTokens += dayBreakdown.totalTokens;
-          bucket.inputTokens += dayBreakdown.inputTokens;
-          bucket.outputTokens += dayBreakdown.outputTokens;
-          bucket.cacheReadTokens += dayBreakdown.cacheReadTokens;
-          bucket.cacheWriteTokens += dayBreakdown.cacheWriteTokens;
-          bucket.reasoningTokens += dayBreakdown.reasoningTokens;
-          bucket.messageCount += dayBreakdown.messageCount ?? 0;
-          bucket.sessionIds.add(latest.sessionId);
-        }
+        accumulateHeatmapBucket(
+          heatmapBuckets,
+          dateKey,
+          latest.sessionId,
+          dayBreakdown,
+          dayBreakdown.messageCount ?? 0,
+          dayBreakdown.modelBreakdowns
+        );
       }
     } else if (latest.totalTokens > 0) {
       const date = new Date(latest.lastModifiedMs);
       const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-      const bucket = heatmapBuckets.get(dateKey);
-      if (!bucket) {
-        heatmapBuckets.set(dateKey, {
-          totalTokens: latest.totalTokens,
-          inputTokens: latest.inputTokens,
-          outputTokens: latest.outputTokens,
-          cacheReadTokens: latest.cacheReadTokens,
-          cacheWriteTokens: latest.cacheWriteTokens,
-          reasoningTokens: latest.reasoningTokens,
-          costUsd: 0,
-          messageCount: latest.messageCount ?? 0,
-          sessionIds: new Set([latest.sessionId])
-        });
-      } else {
-        bucket.totalTokens += latest.totalTokens;
-        bucket.inputTokens += latest.inputTokens;
-        bucket.outputTokens += latest.outputTokens;
-        bucket.cacheReadTokens += latest.cacheReadTokens;
-        bucket.cacheWriteTokens += latest.cacheWriteTokens;
-        bucket.reasoningTokens += latest.reasoningTokens;
-        bucket.messageCount += latest.messageCount ?? 0;
-        bucket.sessionIds.add(latest.sessionId);
-      }
+      accumulateHeatmapBucket(
+        heatmapBuckets,
+        dateKey,
+        latest.sessionId,
+        latest,
+        latest.messageCount ?? 0,
+        latest.modelBreakdowns
+      );
     }
 
     if (persisted.latest.modelBreakdowns) {
@@ -1019,7 +1003,27 @@ function buildDashboardAnalytics(
   const avgCostPerToken = totalDashboardTokens > 0 ? totalCostUsd / totalDashboardTokens : 0;
 
   for (const bin of activityHeatmap) {
-    bin.costUsd = bin.totalTokens * avgCostPerToken;
+    const bucket = heatmapBuckets.get(bin.date);
+    if (!bucket || bin.totalTokens <= 0) {
+      bin.costUsd = 0;
+      continue;
+    }
+
+    if (bucket.modelBreakdowns.size === 0) {
+      bin.costUsd = bin.totalTokens * avgCostPerToken;
+      continue;
+    }
+
+    let dayCost = 0;
+    let coveredTokens = 0;
+    for (const [model, mb] of bucket.modelBreakdowns.entries()) {
+      coveredTokens += mb.totalTokens;
+      const pricing = pricingSnapshot ? resolvePricing?.(model) : undefined;
+      const costResult = calculateModelCost(mb, pricing, unavailableNote);
+      dayCost += costResult.costUsd ?? 0;
+    }
+    const uncoveredTokens = Math.max(0, bin.totalTokens - coveredTokens);
+    bin.costUsd = dayCost + (uncoveredTokens * avgCostPerToken);
   }
 
   const pricing: DashboardState['pricing'] = {
@@ -1059,6 +1063,72 @@ function buildDashboardAnalytics(
     },
     pricing
   };
+}
+
+function accumulateHeatmapBucket(
+  buckets: Map<string, BucketAccumulator>,
+  dateKey: string,
+  sessionId: string,
+  totals: {
+    totalTokens: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    reasoningTokens: number;
+  },
+  messageCount: number,
+  sourceModels?: Record<string, ModelTokenBreakdown>
+): void {
+  let bucket = buckets.get(dateKey);
+  if (!bucket) {
+    bucket = {
+      totalTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      costUsd: 0,
+      messageCount: 0,
+      sessionIds: new Set<string>(),
+      modelBreakdowns: new Map<string, ModelTokenBreakdown>()
+    };
+    buckets.set(dateKey, bucket);
+  }
+
+  bucket.totalTokens += totals.totalTokens;
+  bucket.inputTokens += totals.inputTokens;
+  bucket.outputTokens += totals.outputTokens;
+  bucket.cacheReadTokens += totals.cacheReadTokens;
+  bucket.cacheWriteTokens += totals.cacheWriteTokens;
+  bucket.reasoningTokens += totals.reasoningTokens;
+  bucket.messageCount += messageCount;
+  bucket.sessionIds.add(sessionId);
+
+  if (sourceModels) {
+    for (const [rawModel, mb] of Object.entries(sourceModels)) {
+      if (mb.totalTokens <= 0) {
+        continue;
+      }
+      const model = canonicalizeModelId(rawModel);
+      const existing = bucket.modelBreakdowns.get(model) ?? {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 0
+      };
+      existing.inputTokens += mb.inputTokens;
+      existing.outputTokens += mb.outputTokens;
+      existing.cacheReadTokens += mb.cacheReadTokens;
+      existing.cacheWriteTokens += mb.cacheWriteTokens;
+      existing.reasoningTokens += mb.reasoningTokens;
+      existing.totalTokens += mb.totalTokens;
+      bucket.modelBreakdowns.set(model, existing);
+    }
+  }
 }
 
 function emptyModelAccumulator(): ModelAccumulator {

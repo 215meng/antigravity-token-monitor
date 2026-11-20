@@ -38,60 +38,67 @@ export type ModelCostResult = {
 export const BASELINE_MODEL_PRICING: Record<string, LiteLlmModelPricing> = {
   // Gemini 4 Series & Orchestrator
   'gemini-4-neon': {
-    input_cost_per_token: 0.0000025,
-    prompt_cost_per_token: 0.0000025,
-    output_cost_per_token: 0.00001,
-    completion_cost_per_token: 0.00001,
-    cache_read_input_token_cost: 0.000000625,
-    input_cost_per_token_cache_hit: 0.000000625
+    input_cost_per_token: 0.000003,
+    prompt_cost_per_token: 0.000003,
+    output_cost_per_token: 0.000015,
+    completion_cost_per_token: 0.000015,
+    cache_read_input_token_cost: 0.00000015,
+    input_cost_per_token_cache_hit: 0.00000015,
+    output_cost_per_reasoning_token: 0.000015
   },
   'gemini-4-argon': {
-    input_cost_per_token: 0.00000125,
-    prompt_cost_per_token: 0.00000125,
-    output_cost_per_token: 0.000005,
-    completion_cost_per_token: 0.000005,
-    cache_read_input_token_cost: 0.0000003125,
-    input_cost_per_token_cache_hit: 0.0000003125
+    input_cost_per_token: 0.000002,
+    prompt_cost_per_token: 0.000002,
+    output_cost_per_token: 0.00001,
+    completion_cost_per_token: 0.00001,
+    cache_read_input_token_cost: 0.0000001,
+    input_cost_per_token_cache_hit: 0.0000001,
+    output_cost_per_reasoning_token: 0.00001
   },
   'gemini-4-hydrogen': {
-    input_cost_per_token: 0.00000015,
-    prompt_cost_per_token: 0.00000015,
-    output_cost_per_token: 0.0000006,
-    completion_cost_per_token: 0.0000006,
-    cache_read_input_token_cost: 0.0000000375,
-    input_cost_per_token_cache_hit: 0.0000000375
+    input_cost_per_token: 0.0000015,
+    prompt_cost_per_token: 0.0000015,
+    output_cost_per_token: 0.0000075,
+    completion_cost_per_token: 0.0000075,
+    cache_read_input_token_cost: 0.000000075,
+    input_cost_per_token_cache_hit: 0.000000075,
+    output_cost_per_reasoning_token: 0.0000075
   },
   'gemini-4-hydrogen-orchestrator': {
-    input_cost_per_token: 0.00000015,
-    prompt_cost_per_token: 0.00000015,
-    output_cost_per_token: 0.0000006,
-    completion_cost_per_token: 0.0000006,
-    cache_read_input_token_cost: 0.0000000375,
-    input_cost_per_token_cache_hit: 0.0000000375
+    input_cost_per_token: 0.0000015,
+    prompt_cost_per_token: 0.0000015,
+    output_cost_per_token: 0.0000075,
+    completion_cost_per_token: 0.0000075,
+    cache_read_input_token_cost: 0.000000075,
+    input_cost_per_token_cache_hit: 0.000000075,
+    output_cost_per_reasoning_token: 0.0000075
   },
   'gemini-4-carbon': {
-    input_cost_per_token: 0.0000025,
-    prompt_cost_per_token: 0.0000025,
+    input_cost_per_token: 0.000002,
+    prompt_cost_per_token: 0.000002,
     output_cost_per_token: 0.00001,
     completion_cost_per_token: 0.00001,
-    cache_read_input_token_cost: 0.000000625,
-    input_cost_per_token_cache_hit: 0.000000625
+    cache_read_input_token_cost: 0.0000001,
+    input_cost_per_token_cache_hit: 0.0000001,
+    output_cost_per_reasoning_token: 0.00001
   },
   'orchestrator-neon': {
-    input_cost_per_token: 0.0000025,
-    prompt_cost_per_token: 0.0000025,
-    output_cost_per_token: 0.00001,
-    completion_cost_per_token: 0.00001,
-    cache_read_input_token_cost: 0.000000625,
-    input_cost_per_token_cache_hit: 0.000000625
+    input_cost_per_token: 0.000003,
+    prompt_cost_per_token: 0.000003,
+    output_cost_per_token: 0.000015,
+    completion_cost_per_token: 0.000015,
+    cache_read_input_token_cost: 0.00000015,
+    input_cost_per_token_cache_hit: 0.00000015,
+    output_cost_per_reasoning_token: 0.000015
   },
   'orchestrator-argon': {
-    input_cost_per_token: 0.00000125,
-    prompt_cost_per_token: 0.00000125,
-    output_cost_per_token: 0.000005,
-    completion_cost_per_token: 0.000005,
-    cache_read_input_token_cost: 0.0000003125,
-    input_cost_per_token_cache_hit: 0.0000003125
+    input_cost_per_token: 0.000002,
+    prompt_cost_per_token: 0.000002,
+    output_cost_per_token: 0.00001,
+    completion_cost_per_token: 0.00001,
+    cache_read_input_token_cost: 0.0000001,
+    input_cost_per_token_cache_hit: 0.0000001,
+    output_cost_per_reasoning_token: 0.00001
   },
 
   // Claude 5.5 Series
@@ -124,12 +131,13 @@ export const BASELINE_MODEL_PRICING: Record<string, LiteLlmModelPricing> = {
 
   // Gemini 3.8 Series
   'gemini-3.8-flash': {
-    input_cost_per_token: 0.00000015,
-    prompt_cost_per_token: 0.00000015,
-    output_cost_per_token: 0.0000006,
-    completion_cost_per_token: 0.0000006,
-    cache_read_input_token_cost: 0.0000000375,
-    input_cost_per_token_cache_hit: 0.0000000375
+    input_cost_per_token: 0.00000075,
+    prompt_cost_per_token: 0.00000075,
+    output_cost_per_token: 0.00000375,
+    completion_cost_per_token: 0.00000375,
+    cache_read_input_token_cost: 0.000000075,
+    input_cost_per_token_cache_hit: 0.000000075,
+    output_cost_per_reasoning_token: 0.00000375
   },
   'gemini-3.8-pro': {
     input_cost_per_token: 0.0000015,
@@ -553,9 +561,26 @@ function buildModelAliases(model: string): string[] {
 
   const bareBase = (unwrappedBase.includes('/') ? unwrappedBase.split('/').at(-1) : unwrappedBase) ?? unwrappedBase;
 
-  // Gemini previews
+  // Gemini previews & Orchestrator -> Gemini 4 mappings
   if (/^gemini-(?:2\.5|3(?:\.[0-9]+)?)(?:-|$)/u.test(trimmedQuality) && !trimmedQuality.endsWith('-preview')) {
     aliases.add(`${trimmedQuality}-preview`);
+  }
+
+  if (bareBase === 'gemini-4-hydrogen-orchestrator') {
+    aliases.add('gemini-4-hydrogen');
+  }
+
+  const orchestratorMatch = bareBase.match(/^orchestrator-([a-z0-9]+)$/u);
+  if (orchestratorMatch?.[1]) {
+    aliases.add(`gemini-4-${orchestratorMatch[1]}`);
+  }
+
+  // Prefer official Google provider prefixes when LiteLLM splits entries across multiple providers
+  for (const candidate of Array.from(aliases)) {
+    if (!candidate.includes('/') && /^gemini-/u.test(candidate)) {
+      aliases.add(`gemini/${candidate}`);
+      aliases.add(`vertex_ai/${candidate}`);
+    }
   }
 
   // Claude 3.7

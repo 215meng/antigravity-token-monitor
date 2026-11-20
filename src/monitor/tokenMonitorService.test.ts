@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
 import type * as vscode from 'vscode';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MonitorConfig } from '../config';
 import { AntigravitySessionParser } from '../parser/antigravitySessionParser';
 import { SnapshotStore } from '../storage/snapshotStore';
@@ -16,6 +16,7 @@ describe('TokenMonitorService', () => {
   const services: TokenMonitorService[] = [];
 
   afterEach(() => {
+    vi.restoreAllMocks();
     while (services.length > 0) {
       services.pop()?.dispose();
     }
@@ -187,6 +188,125 @@ describe('TokenMonitorService', () => {
     expect(state.summary.activeSessionCount).toBe(1);
     expect(state.summary.archivedSessionCount).toBe(0);
     expect(state.sessions[0]?.status).toBe('active');
+  });
+
+  it('computes per-day heatmap costUsd from daily model breakdowns instead of global average cost per token', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      'gemini/gemini-4-hydrogen': {
+        input_cost_per_token: 0.000001,
+        output_cost_per_token: 0.000005,
+        cache_read_input_token_cost: 0.0000001
+      },
+      'gemini/gemini-4-neon': {
+        input_cost_per_token: 0.00001,
+        output_cost_per_token: 0.00005,
+        cache_read_input_token_cost: 0.000001
+      }
+    }), { status: 200 }));
+
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+    const sessionRoot = await mkdtemp(path.join(tmpdir(), 'antigravity-monitor-daily-cost-'));
+    const harness = await createStoreHarness();
+
+    const parsedTotals: SessionTotals = {
+      sessionId: 'session-1',
+      label: 'Session 1',
+      filePath: path.join(sessionRoot, 'brain', 'session-1'),
+      lastModifiedMs: now.getTime(),
+      mode: 'reported',
+      source: 'filesystem',
+      evidenceCount: 2,
+      messageCount: 2,
+      inputTokens: 200_000,
+      outputTokens: 20_000,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 220_000,
+      modelBreakdowns: {
+        'gemini-4-hydrogen': {
+          inputTokens: 100_000,
+          outputTokens: 10_000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 110_000
+        },
+        'orchestrator-neon': {
+          inputTokens: 100_000,
+          outputTokens: 10_000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 110_000
+        }
+      },
+      dailyBreakdowns: {
+        [yesterdayKey]: {
+          inputTokens: 100_000,
+          outputTokens: 10_000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 110_000,
+          messageCount: 1,
+          modelBreakdowns: {
+            'gemini-4-hydrogen': {
+              inputTokens: 100_000,
+              outputTokens: 10_000,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+              reasoningTokens: 0,
+              totalTokens: 110_000
+            }
+          }
+        },
+        [todayKey]: {
+          inputTokens: 100_000,
+          outputTokens: 10_000,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 110_000,
+          messageCount: 1,
+          modelBreakdowns: {
+            'orchestrator-neon': {
+              inputTokens: 100_000,
+              outputTokens: 10_000,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+              reasoningTokens: 0,
+              totalTokens: 110_000
+            }
+          }
+        }
+      }
+    };
+
+    const service = createService({
+      sessionRoot,
+      store: harness.store,
+      scannerResults: [{ sessions: [buildCandidate(sessionRoot)], complete: true }],
+      parseResults: [parsedTotals]
+    });
+    services.push(service);
+
+    await service.initialize();
+
+    const state = service.getDashboardState();
+    const yesterdayBin = state.analytics.activityHeatmap.find((bin) => bin.date === yesterdayKey);
+    const todayBin = state.analytics.activityHeatmap.find((bin) => bin.date === todayKey);
+
+    // Hydrogen day: 100k * 1e-6 + 10k * 5e-6 = $0.15
+    expect(yesterdayBin?.costUsd).toBeCloseTo(0.15);
+    // Neon day: 100k * 1e-5 + 10k * 5e-5 = $1.50 (10x higher despite identical token count)
+    expect(todayBin?.costUsd).toBeCloseTo(1.50);
+    expect(state.pricing.totalCostUsd).toBeCloseTo(1.65);
   });
 });
 

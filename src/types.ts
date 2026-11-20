@@ -52,6 +52,7 @@ export type SessionScanResult = {
 
 export type DailyTokenBreakdown = TokenBreakdown & {
   messageCount: number;
+  modelBreakdowns?: Record<string, ModelTokenBreakdown>;
 };
 
 export type SessionTotals = TokenBreakdown & {

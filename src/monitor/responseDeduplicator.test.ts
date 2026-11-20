@@ -151,12 +151,15 @@ describe('deduplicateSessionsFromArtifacts', () => {
     // Parent owns shared (3300) + parentSecond (600) + reverted transcript call (950) = 4850
     expect(result[parentId].latest.totalTokens).toBe(4850);
     expect(result[parentId].latest.dailyBreakdowns?.['2026-11-15']?.totalTokens).toBe(3300);
+    expect(result[parentId].latest.dailyBreakdowns?.['2026-11-15']?.modelBreakdowns?.['gemini-3.8-flash']?.totalTokens).toBe(3300);
     expect(result[parentId].latest.dailyBreakdowns?.['2026-11-16']?.totalTokens).toBe(1550);
+    expect(result[parentId].latest.dailyBreakdowns?.['2026-11-16']?.modelBreakdowns?.['gemini-3.8-flash']?.totalTokens).toBe(1550);
     expect(result[parentId].latest.dailyBreakdowns?.['2026-11-17']).toBeUndefined();
 
     // Child only keeps its own call (350)
     expect(result[childId].latest.totalTokens).toBe(350);
     expect(result[childId].latest.dailyBreakdowns?.['2026-11-16']?.totalTokens).toBe(350);
+    expect(result[childId].latest.dailyBreakdowns?.['2026-11-16']?.modelBreakdowns?.['gemini-3.8-flash']?.totalTokens).toBe(350);
   });
 
   it('clears pre-deduplication dailyBreakdowns when a cloned subagent has zero remaining tokens', async () => {

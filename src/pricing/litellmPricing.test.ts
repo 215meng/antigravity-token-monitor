@@ -159,8 +159,8 @@ describe('litellmPricing', () => {
     // Gemini 3.8 & 3 series
     const gemini38 = catalog.resolveModelPricing('gemini-3.8-flash');
     expect(gemini38).toBeDefined();
-    expect(gemini38?.input_cost_per_token).toBe(0.00000015);
-    expect(gemini38?.output_cost_per_token).toBe(0.0000006);
+    expect(gemini38?.input_cost_per_token).toBe(0.00000075);
+    expect(gemini38?.output_cost_per_token).toBe(0.00000375);
 
     const gemini3Pro = catalog.resolveModelPricing('gemini-3-pro');
     expect(gemini3Pro).toBeDefined();
@@ -222,13 +222,13 @@ describe('litellmPricing', () => {
 
     expect(catalog.resolveModelPricing('gpt-4o')?.input_cost_per_token).toBe(0.0000099);
     // Models not in remote fetch still resolve via baseline
-    expect(catalog.resolveModelPricing('gemini-3.8-flash')?.input_cost_per_token).toBe(0.00000015);
+    expect(catalog.resolveModelPricing('gemini-3.8-flash')?.input_cost_per_token).toBe(0.00000075);
   });
 
   it('exports BASELINE_MODEL_PRICING with prompt_cost_per_token and completion_cost_per_token fields', () => {
-    expect(BASELINE_MODEL_PRICING['gemini-3.8-flash'].prompt_cost_per_token).toBe(0.00000015);
-    expect(BASELINE_MODEL_PRICING['gemini-3.8-flash'].completion_cost_per_token).toBe(0.0000006);
-    expect(BASELINE_MODEL_PRICING['gemini-3.8-flash'].input_cost_per_token_cache_hit).toBe(0.0000000375);
+    expect(BASELINE_MODEL_PRICING['gemini-3.8-flash'].prompt_cost_per_token).toBe(0.00000075);
+    expect(BASELINE_MODEL_PRICING['gemini-3.8-flash'].completion_cost_per_token).toBe(0.00000375);
+    expect(BASELINE_MODEL_PRICING['gemini-3.8-flash'].input_cost_per_token_cache_hit).toBe(0.000000075);
 
     expect(BASELINE_MODEL_PRICING['claude-3-7-sonnet'].prompt_cost_per_token).toBe(0.000003);
     expect(BASELINE_MODEL_PRICING['claude-3-7-sonnet'].completion_cost_per_token).toBe(0.000015);
@@ -242,17 +242,17 @@ describe('litellmPricing', () => {
 
     const neon = catalog.resolveModelPricing('gemini-4-neon');
     expect(neon).toBeDefined();
-    expect(neon?.input_cost_per_token).toBe(0.0000025);
-    expect(neon?.output_cost_per_token).toBe(0.00001);
+    expect(neon?.input_cost_per_token).toBe(0.000003);
+    expect(neon?.output_cost_per_token).toBe(0.000015);
 
     const orchNeon = catalog.resolveModelPricing('orchestrator-neon');
     expect(orchNeon).toBeDefined();
-    expect(orchNeon?.input_cost_per_token).toBe(0.0000025);
+    expect(orchNeon?.input_cost_per_token).toBe(0.000003);
 
     const hydrogenOrch = catalog.resolveModelPricing('gemini-4-hydrogen-orchestrator');
     expect(hydrogenOrch).toBeDefined();
-    expect(hydrogenOrch?.input_cost_per_token).toBe(0.00000015);
-    expect(hydrogenOrch?.output_cost_per_token).toBe(0.0000006);
+    expect(hydrogenOrch?.input_cost_per_token).toBe(0.0000015);
+    expect(hydrogenOrch?.output_cost_per_token).toBe(0.0000075);
 
     const cost = calculateModelCost(
       { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 10000, cacheWriteTokens: 0, reasoningTokens: 50, totalTokens: 11150 },
@@ -260,6 +260,23 @@ describe('litellmPricing', () => {
       'Unpriced'
     );
     expect(cost.pricingStatus).toBe('priced');
-    expect(cost.costUsd).toBeCloseTo(1000 * 0.0000025 + 150 * 0.00001 + 10000 * 0.000000625);
+    expect(cost.costUsd).toBeCloseTo(1000 * 0.000003 + 150 * 0.000015 + 10000 * 0.00000015);
+  });
+
+  it('resolves official Google Gemini 4 and Orchestrator remote pricing even when multiple providers list the same suffix', async () => {
+    const catalog = new LiteLlmPricingCatalog(async () => new Response(JSON.stringify({
+      'gemini/gemini-4-hydrogen': { input_cost_per_token: 0.0000016, output_cost_per_token: 0.000008, cache_read_input_token_cost: 0.00000008 },
+      'vertex_ai/gemini-4-hydrogen': { input_cost_per_token: 0.0000016, output_cost_per_token: 0.000008, cache_read_input_token_cost: 0.00000008 },
+      'kyma/gemini-4-argon': { input_cost_per_token: 0.0000054, output_cost_per_token: 0.000027 },
+      'vertex_ai/gemini-4-argon': { input_cost_per_token: 0.0000021, output_cost_per_token: 0.0000105 },
+      'gemini/gemini-4-neon': { input_cost_per_token: 0.0000032, output_cost_per_token: 0.000016 }
+    }), { status: 200 }), 'https://example.test/pricing.json');
+
+    await catalog.getSnapshot();
+
+    expect(catalog.resolveModelPricing('gemini-4-hydrogen')?.input_cost_per_token).toBe(0.0000016);
+    expect(catalog.resolveModelPricing('gemini-4-hydrogen-orchestrator')?.input_cost_per_token).toBe(0.0000016);
+    expect(catalog.resolveModelPricing('orchestrator-argon')?.input_cost_per_token).toBe(0.0000021);
+    expect(catalog.resolveModelPricing('orchestrator-neon')?.input_cost_per_token).toBe(0.0000032);
   });
 });
