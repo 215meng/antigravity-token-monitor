@@ -1,119 +1,125 @@
-# Antigravity Token Monitor (增强与精确核算版)
+# Antigravity Token Monitor (Enhanced & Exact Accounting Edition)
+
+**English** | [简体中文](docs/README.zh-CN.md)
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC?logo=visualstudiocode)](https://code.visualstudio.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)](https://svelte.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> 在 VS Code 面板与侧边栏中实时、精准地收集、去重、核算并可视化您的 Antigravity 会话 Token 使用量。
+> Real-time, deduplicated, and accurate Antigravity session token & cost monitoring right inside your VS Code dashboard, sidebar, and status bar.
 
 > [!NOTE]
-> **致谢与项目声明（Upstream Attribution）**
-> 本项目基于原作者 **ddarkr** 的开源项目 **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)**（MIT License）进行深度修复、Windows 适配、全量中文汉化与精确核算增强二次开发。完整保留原作者版权声明，并向原作者致敬！
+> **Upstream Attribution**
+> This fork builds upon **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)** (MIT License) with deep bug fixes, Windows support, exact cross-session deduplication, per-day per-model cost accounting, and Simplified Chinese UI localization. All original copyright notices are preserved with respect to the upstream author.
 
 ![Dashboard Preview](docs/screenshot.png)
 
 ---
 
-## 本 Fork 版本核心改进与新增特性
+## Core Enhancements in This Fork
 
-在原项目架构的基础上，本版本重点修复了底层采集、重复统计与跨日核算等核心问题：
+Building on the upstream architecture, this edition resolves critical inaccuracies in token acquisition, duplicate counting, daily attribution, and model pricing:
 
-- 🎯 **全链路精确去重核算（零重复、零遗漏）**
-  - 优先提取权威 `raw.chatModel.usage` 字段，屏蔽旧缓存顶层翻倍脏数据及同请求镜像 `retryInfos`；
-  - 将 `outputTokens` 正交拆分为纯答复输出（`responseOutputTokens`）与深度思考（`thinkingOutputTokens`），避免重复累加；
-  - 当 `usage.jsonl` 存在时不重复累加 `steps.jsonl` 中的回退用量；
-  - 通过唯一请求 ID（`responseId` / `messageId`）执行跨会话所有权仲裁，彻底消除主会话与 Subagent/Fork 子会话之间因历史克隆导致的数倍虚高；
-  - 自动融合 `transcript.jsonl` 中因修改重发/回退分支（Revert/Edit）而被覆盖掉的历史真实 `PLANNER_RESPONSE` 调用。
-- 📅 **真实每日热力图（按单步发生日期精确统计）**
-  - 通过解析 SQLite `steps` 表时间戳、导出 `stepIndices` 与 `transcript.jsonl` `created_at`，将每一次模型调用归入其实际发生的本地日期（`YYYY-MM-DD`），杜绝跨日长会话因新对话将过去日期的用量迁走。
-- 🗄️ **本地 SQLite `.db` 原生直读与 50MB 大文件支持**
-  - 新增 `sqliteTrajectoryReader`，在 RPC 摘要缺失或离线情况下直接从 `conversations/<sessionId>.db` 读取 `steps` 与 `gen_metadata`；
-  - 默认 `maxFileBytes` 提升至 `52428800`（50MB），防止大型长会话被截断；完整纳入活跃与归档会话。
-- 🔄 **全自动增量实时同步**
-  - 通过定时增量刷新 + `conversations/`、`brain/` 目录文件监听（防抖自动导出与重算），无需手动干预即可自动同步最新真实用量。
-- 🪟 **Windows 深度适配与新模型支持**
-  - 修复 Windows 下的进程/端口探测与大小写路径包含判定；
-  - 支持最新模型家族解析与定价映射（Gemini 4 Neon / Argon / Hydrogen / Carbon、Orchestrator (Neon / Argon)、Gemini 3.8 Flash 全档位、Claude Opus/Sonnet 5.5、GPT-OSS 120B 等）。
-- 🇨🇳 **完整简体中文汉化**
-  - 看板、侧边栏、状态栏、热力图悬浮提示与配置说明全面简体中文化。
+- 🎯 **End-to-End Exact Deduplication (Zero Double-Counting, Zero Omissions)**
+  - Prioritizes the authoritative `raw.chatModel.usage` payload, ignoring legacy doubled top-level cache fields and duplicate `retryInfos` mirrors for the same request.
+  - Splits `outputTokens` orthogonally into pure response output (`responseOutputTokens`) and reasoning tokens (`thinkingOutputTokens`) so reasoning tokens are never counted twice.
+  - Skips fallback `steps.jsonl` usage payloads whenever authoritative `usage.jsonl` records are present.
+  - Arbitrates cross-session ownership by unique request ID (`responseId` / `messageId`), eliminating multi-fold inflation from cloned history between parent sessions and subagents/forks.
+  - Automatically fuses real `PLANNER_RESPONSE` calls from `transcript.jsonl` on reverted or edited branches that would otherwise be overwritten.
+- 📅 **True Daily Activity Heatmap & Per-Model Cost Calculation**
+  - Resolves per-step timestamps from SQLite `steps` tables, exported `stepIndices`, and `transcript.jsonl` `created_at` fields to attribute every model call to the exact local calendar date (`YYYY-MM-DD`) on which it occurred.
+  - Computes each day's estimated cost (`costUsd`) strictly from that day's actual per-model token breakdown (`input` / `output` / `reasoning` / `cacheRead` / `cacheWrite`) rather than spreading a global historical average across days.
+- 🗄️ **Native SQLite `.db` Reading & 50MB Large-File Support**
+  - Adds `sqliteTrajectoryReader` to read `steps` and `gen_metadata` directly from `conversations/<sessionId>.db` when RPC summaries are unavailable or offline.
+  - Raises the default `maxFileBytes` limit to `52428800` (50 MB) to prevent large long-running sessions from being truncated, while retaining both active and monthly-archived sessions.
+- 🔄 **Automatic Real-Time Incremental Sync**
+  - Combines scheduled polling with debounced file watchers on `conversations/` and `brain/` so new sessions and updates sync automatically without manual intervention.
+- 🪟 **Windows Support & Modern Model Pricing**
+  - Fixes Windows process/port detection and case-insensitive path matching.
+  - Supports placeholder resolution, alias canonicalization, and LiteLLM official pricing lookups for the Gemini 4 family (Neon, Argon, Hydrogen, Carbon), Orchestrator variants, Gemini 3.8 Flash, Claude Opus/Sonnet 5.5 & 4.6, GPT-OSS 120B, and more.
+- 🌐 **Simplified Chinese UI**
+  - Full Simplified Chinese localization across the webview dashboard, Activity Bar sidebar, status bar tooltips, and extension settings.
 
 ---
 
-## ⚠️ Disclaimer / 免责声明
+## ⚠️ Disclaimer
 
 > [!WARNING]
 >
-> - 本项目为非官方社区开源工具，与 Google 无任何关联。
-> - 依赖 Antigravity 本地持久化数据与内部 `127.0.0.1` RPC 接口，接口格式可能随软件版本变化。
-> - 成本估算基于 [LiteLLM 开源定价表](https://github.com/BerriAI/litellm)，仅作参考，请勿用于财务结算依据。
-> - 所有采集与分析均在本地完成，不会向第三方服务器上传您的对话或任何隐私数据（仅从 GitHub 拉取公开的 LiteLLM 模型定价 JSON）。
+> - This is an unofficial community open-source tool and is not affiliated with Google.
+> - It relies on Antigravity's local persisted files and internal `127.0.0.1` RPC endpoints, whose schemas may change across software updates.
+> - Cost estimates are calculated using the open-source [LiteLLM pricing catalog](https://github.com/BerriAI/litellm) and built-in fallbacks for reference only—do not use them for billing reconciliation.
+> - All session scanning, parsing, and analytics run locally on your machine; no conversation content or private data is ever uploaded (the only external network request fetches the public LiteLLM pricing JSON from GitHub).
 
 ---
 
-## 快速开始（Getting Started）
+## Getting Started
 
-### 环境要求
+### Prerequisites
 
 - [VS Code](https://code.visualstudio.com/) `≥ 1.96.0`
-- [Node.js](https://nodejs.org/) `≥ 22`（内置 `node:sqlite` 支持本地 `.db` 直读，若低于 22 则自动降级回 RPC/文件系统）
-- 正在运行或本机已保存历史会话的 Antigravity
+- [Node.js](https://nodejs.org/) `≥ 22` (provides built-in `node:sqlite` for direct `.db` reading; older versions automatically fall back to RPC/filesystem parsing)
+- Antigravity running locally or existing saved sessions under `~/.gemini/antigravity`
 
-### 从源码编译与安装
+### Build & Install from Source
 
 ```bash
-# 克隆仓库
+# Clone the repository
 git clone https://github.com/215meng/antigravity-token-monitor.git
 cd antigravity-token-monitor
 
-# 安装依赖
+# Install dependencies
 npm install
 
-# 运行类型检查与测试
+# Run type checks and unit tests
 npm run typecheck
 npm run typecheck:webview
 npm run test:webview
 
-# 编译并打包 VSIX
+# Optional: verify live local token consumption in the terminal
+npm run usage
+
+# Compile and package the VSIX extension
 npm run package
 ```
 
-Windows 用户也可以直接运行根目录的一键安装脚本：
+On Windows, you can run the one-click installer script at the repository root:
 
 ```powershell
-./install-extension.ps1
+.\install-extension.ps1
 ```
 
-或在 VS Code 中按 `Ctrl+Shift+P` 执行 `Extensions: Install from VSIX...` 选择打包生成的 `.vsix` 文件。
+Alternatively, open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) in VS Code and run `Extensions: Install from VSIX...`, then select the generated `.vsix` file.
 
-### 使用方式
+### Usage
 
-1. 打开命令面板（`Cmd+Shift+P` / `Ctrl+Shift+P`）
-2. 运行 `Antigravity Token 监控: 打开监控面板`
-3. 也可直接点击状态栏右侧的 Token 统计数字，或点击左侧 Activity Bar 图标查看侧边栏迷你概览。
+1. Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
+2. Run `Antigravity Token 监控: 打开监控面板` (Open Dashboard).
+3. You can also click the token counter in the right side of the status bar, or click the Activity Bar graph icon for the sidebar mini-dashboard.
 
 ---
 
-## 项目架构
+## Architecture
 
 ```
 Data Acquisition → Analysis → Orchestration → Presentation
 ```
 
-- `src/rpc/` — 进程探测、HTTPS RPC 客户端、SQLite `.db` 原生解析与增量导出
-- `src/parser/` — 规范化 Token 解析与单步每日明细归因
-- `src/monitor/` — 会话扫描、跨会话 `responseId` 去重、撤回分支融合、服务调度与文件锁
-- `src/pricing/` — 基于 LiteLLM 的模型匹配与成本估算
-- `src/storage/` — RPC 缓存及按月分片的会话状态持久化
-- `src/statusBar/` & `src/webview/` — 状态栏与 Svelte 5 看板 / 侧边栏界面
+- `src/rpc/` — Process detection, localhost HTTPS RPC client, native SQLite `.db` reader, and incremental JSONL exporter
+- `src/parser/` — Canonical token extraction and per-step daily model breakdown attribution
+- `src/monitor/` — Session scanning, cross-session `responseId` deduplication, reverted-branch fusion, polling orchestration, and file locks
+- `src/pricing/` — LiteLLM catalog fetching, alias matching, and per-model cost calculation
+- `src/storage/` — Local RPC artifact cache and monthly-sharded session state persistence
+- `src/statusBar/` & `src/webview/` — VS Code status bar item and Svelte 5 dashboard / Activity Bar sidebar UI
 
 ---
 
 ## Inspired By
 
-- **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)** — 原作者与基础项目
-- **[antigravity-storage-manager](https://github.com/unchase/antigravity-storage-manager)** — 会话 Token 解析思路参考
-- **[tokscale](https://github.com/junhoyeo/tokscale)** — 用量追踪与可视化灵感
+- **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)** — Upstream project and original author
+- **[antigravity-storage-manager](https://github.com/unchase/antigravity-storage-manager)** — Session token parsing reference
+- **[tokscale](https://github.com/junhoyeo/tokscale)** — Usage tracking and visualization inspiration
 
 ---
 
