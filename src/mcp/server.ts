@@ -204,8 +204,8 @@ export async function startMcpServer(): Promise<void> {
     tools: [
       {
         name: 'open_token_dashboard',
-        title: 'Token Monitor',
-        description: 'Open the full-page Antigravity Token Monitor dashboard showing monthly cumulative usage, heatmap, model breakdown, cost estimate, and session list.',
+        title: 'TokenScope',
+        description: 'Open the full-page Antigravity TokenScope observability dashboard showing monthly cumulative usage, today breakdown, heatmap, model distribution, cost estimate, and session list.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -222,7 +222,7 @@ export async function startMcpServer(): Promise<void> {
           },
           'com.google.antigravity/ui': {
             entrypoints: [
-              { type: 'global', title: 'Token Monitor' }
+              { type: 'global', title: 'TokenScope' }
             ]
           }
         }

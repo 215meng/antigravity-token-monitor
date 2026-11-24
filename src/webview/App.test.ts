@@ -22,7 +22,7 @@ describe('App', () => {
     dashboardState.set(mockDashboardState);
     const { getByRole, getAllByText, getByText } = render(App);
     
-    expect(getAllByText('Antigravity Token Monitor').length).toBeGreaterThan(0);
+    expect(getAllByText('Antigravity TokenScope').length).toBeGreaterThan(0);
     
     expect(getByRole('region', { name: /overview hero/i })).toBeTruthy();
     expect(getByRole('region', { name: /analysis canvas/i })).toBeTruthy();

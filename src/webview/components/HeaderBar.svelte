@@ -60,7 +60,7 @@
   <div class="top-bar-content">
     <div class="brand">
       <div class="logo-mark" aria-hidden="true"></div>
-      <h1 class="title"><span>Antigravity Token Monitor</span> <span class="cn-title">监控看板</span></h1>
+      <h1 class="title"><span>Antigravity TokenScope</span> <span class="cn-title">可观测性看板</span></h1>
     </div>
 
     <div class="actions">

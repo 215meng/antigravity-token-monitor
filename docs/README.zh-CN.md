@@ -1,89 +1,90 @@
-# Antigravity Token Monitor (增强与精确核算版)
+<div align="center">
+
+<img src="../plugin-template/assets/logo.svg" width="84" alt="Antigravity TokenScope Logo" />
+
+# Antigravity TokenScope
+
+**原生运行在 Antigravity 内的 Token 与成本可观测性插件 —— 零重复核算、零云端上传、无需切换 VS Code。**
+
+[![Antigravity](https://img.shields.io/badge/Antigravity-原生%20MCP%20App-0f766e?style=flat-square)](https://antigravity.google/)
+[![MCP Apps](https://img.shields.io/badge/MCP%20Apps-SEP--1865-2563eb?style=flat-square)](https://github.com/modelcontextprotocol/ext-apps)
+[![Svelte 5](https://img.shields.io/badge/UI-Svelte%205-ff3e00?style=flat-square&logo=svelte&logoColor=white)](https://svelte.dev/)
+[![Privacy](https://img.shields.io/badge/隐私安全-100%25%20本地运行-16a34a?style=flat-square)](#-隐私声明与免责)
+[![License: MIT](https://img.shields.io/badge/License-MIT-eab308?style=flat-square)](../LICENSE)
 
 [English](../README.md) | **简体中文**
 
-[![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC?logo=visualstudiocode)](https://code.visualstudio.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript)](https://www.typescriptlang.org/)
-[![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)](https://svelte.dev/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-> 无需频繁切换 VS Code！直接在 **Antigravity 原生界面**（左侧全局全页大屏、右侧辅助栏本月/今日用量面板、对话内实时查询）及 VS Code 中精准收集、去重、核算并可视化您的 Antigravity 会话 Token 使用量。
-
-> [!NOTE]
-> **致谢与项目声明（Upstream Attribution）**
-> 本项目基于原作者 **ddarkr** 的开源项目 **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)**（MIT License）进行深度修复、Windows 适配、全量中文汉化与精确核算增强二次开发。完整保留原作者版权声明，并向原作者致敬！
-
-![Dashboard Preview](screenshot.png)
+</div>
 
 ---
 
-## 本 Fork 版本核心改进与新增特性
+![Antigravity TokenScope Dashboard](screenshot.png)
 
-在原项目架构的基础上，本版本重点修复了底层采集、重复统计、跨日核算与模型定价等核心问题：
+## 为什么选择 Antigravity TokenScope？
 
-- 🎯 **全链路精确去重核算（零重复、零遗漏）**
-  - 优先提取权威 `raw.chatModel.usage` 字段，屏蔽旧缓存顶层翻倍脏数据及同请求镜像 `retryInfos`；
-  - 将 `outputTokens` 正交拆分为纯答复输出（`responseOutputTokens`）与深度思考（`thinkingOutputTokens`），避免重复累加；
-  - 当 `usage.jsonl` 存在时不重复累加 `steps.jsonl` 中的回退用量；
-  - 通过唯一请求 ID（`responseId` / `messageId`）执行跨会话所有权仲裁，彻底消除主会话与 Subagent/Fork 子会话之间因历史克隆导致的数倍虚高；
-  - 自动融合 `transcript.jsonl` 中因修改重发/回退分支（Revert/Edit）而被覆盖掉的历史真实 `PLANNER_RESPONSE` 调用。
-- 📅 **真实每日热力图与逐日分模型精准计费**
-  - 通过解析 SQLite `steps` 表时间戳、导出 `stepIndices` 与 `transcript.jsonl` `created_at`，将每一次模型调用归入其实际发生的本地日期（`YYYY-MM-DD`），杜绝跨日长会话因新对话将过去日期的用量迁走；
-  - 按当日各模型的真实 `input` / `output` / `reasoning` / `cacheRead` / `cacheWrite` 构成逐项核算每日预估费用（`costUsd`），告别全历史均价分摊偏差。
-- 🗄️ **本地 SQLite `.db` 原生直读与 50MB 大文件支持**
-  - 新增 `sqliteTrajectoryReader`，在 RPC 摘要缺失或离线情况下直接从 `conversations/<sessionId>.db` 读取 `steps` 与 `gen_metadata`；
-  - 默认 `maxFileBytes` 提升至 `52428800`（50MB），防止大型长会话被截断；完整纳入活跃与归档会话。
-- 🔄 **全自动增量实时同步**
-  - 通过定时增量刷新 + `conversations/`、`brain/` 目录文件监听（防抖自动导出与重算），无需手动干预即可自动同步最新真实用量。
-- 🪟 **Windows 深度适配与新模型支持**
-  - 修复 Windows 下的进程/端口探测与大小写路径包含判定；
-  - 支持最新模型家族解析、官方前缀匹配与定价映射（Gemini 4 Neon / Carbon / Argon / Hydrogen、多模型 Orchestrator (Neon / Carbon / Argon / Claude Opus 5.5)、Gemini 3.8 Flash 全档位、Claude Opus/Sonnet 5.5 & 4.6、GPT-OSS 120B 等）。
-- 🇨🇳 **完整简体中文汉化**
-  - 看板、侧边栏、状态栏、热力图悬浮提示与配置说明全面简体中文化。
+您是否一直想知道自己的 Antigravity Agent **今天**或**本月**到底消耗了多少 Token 和费用——却不想每次都打开笨重的 VS Code、不想被 Subagent 克隆记录导致的 2~5 倍虚高账单误导、更不想把本地对话隐私上传到任何第三方服务器？
+
+**Antigravity TokenScope** 以 **Antigravity 原生插件（MCP App）** 形态深度集成在您的日常工作流中（同时继续以维护模式兼容原 VS Code 扩展），将本地会话日志、SQLite `.db` 数据库与回环 RPC 元数据实时转化为精准、美观、自适应明暗主题的可观测性面板。
+
+| 对比维度 | Antigravity TokenScope | 传统外部扩展 / 粗略统计脚本 |
+| :--- | :--- | :--- |
+| **原生使用体验** | 直接内置于 Antigravity 左侧全局栏、右侧辅助栏与对话查询 | 必须切回 VS Code 或手动敲命令行 |
+| **核算精准度** | 深度思考与纯输出正交拆分、`responseId` 跨会话仲裁、撤回分支融合 | 重复累加思考 Token、重试镜像与 Subagent 克隆（虚高 2~5 倍） |
+| **本月与今日洞察** | 首屏高亮**本月累计**与**今日消耗**、**当日精准 Token 构成细分**、真实本地日历计费 | 跨日会话归属错乱、按历史均价分摊造成单日费用失真 |
+| **启动速度与韧性** | 非阻塞启动 `< 200ms` 秒开、原生 `node:sqlite` 直读、支持 50MB 超大会话 | 冷启动扫全盘卡死界面，或大文件直接被截断 |
+| **隐私安全** | 100% 本地扫描分析，严格限制仅本机 `127.0.0.1` 回环 RPC，零遥测 | 依赖外部代理或云端同步，存在对话泄露风险 |
 
 ---
 
-## ⚠️ Disclaimer / 免责声明
+## 三种原生使用方式
 
-> [!WARNING]
->
-> - 本项目为非官方社区开源工具，与 Google 无任何关联。
-> - 依赖 Antigravity 本地持久化数据与内部 `127.0.0.1` RPC 接口，接口格式可能随软件版本变化。
-> - 成本估算基于 [LiteLLM 开源定价表](https://github.com/BerriAI/litellm)，仅作参考，请勿用于财务结算依据。
-> - 所有采集与分析均在本地完成，不会向第三方服务器上传您的对话或任何隐私数据（仅从 GitHub 拉取公开的 LiteLLM 模型定价 JSON）。
+1. **左侧全局全页大屏（`TokenScope`）**
+   在 Antigravity 左侧导航栏一键打开完整 Svelte 5 可观测性看板：涵盖**本月累计 KPI**、**当日 Token 构成细分**（Input / Output / Cache / Reasoning）、交互式**每日活跃热力图**、**模型分布与 LiteLLM 费用估算**、数据源覆盖率以及会话排行榜，自动适配浅色与深色主题。
+2. **右侧辅助栏常驻面板（`Token 用量`）**
+   从右侧栏 `+` 菜单打开精简面板，首屏突出显示**本月累计 Token / 估算费用**、**今日消耗**与**当日构成细分**，方便边聊边看。
+3. **对话内直接询问（内置 Skill）**
+   直接在对话里问“今天用了多少 token”或“本月累计消耗多少”，内置 `token-monitor` 技能会自动汇总今日、本月与全量数据。
 
 ---
 
-## 快速开始（Antigravity 原生插件 — 推荐）
+## 60 秒快速开始（Antigravity 原生插件）
 
 ### 环境要求
 
-- 正在运行或本机已保存历史会话的 Antigravity
-- [Node.js](https://nodejs.org/) `≥ 22`（内置 `node:sqlite` 支持本地 `.db` 直读，Node 20+ 会自动降级回 RPC/文件系统）
+- 本机已安装并运行 [Antigravity](https://antigravity.google/)（或 `~/.gemini/antigravity` 下有历史会话）
+- [Node.js](https://nodejs.org/) `≥ 22`（提供内置 `node:sqlite` 支持本地 `.db` 直读；Node 20+ 会自动降级回 RPC 与文件系统解析）
 
-### 3 步从源码构建并接入 Antigravity
+### 3 步源码构建与一键接入
 
 ```bash
-# 1. 克隆仓库并安装依赖
 git clone https://github.com/215meng/antigravity-token-monitor.git
 cd antigravity-token-monitor
-npm install
-
-# 2. 构建 Antigravity MCP App 单文件插件包
-npm run build:plugin
-
-# 3. 一键安装到 ~/.gemini/config/plugins/antigravity-token-monitor/
-npm run install:plugin
+npm install && npm run build:plugin && npm run install:plugin
 ```
 
+`install:plugin` 会自动将单文件自包含前端（`< 800 KiB`）与 `stdio` MCP Server 安装到 `~/.gemini/config/plugins/antigravity-token-monitor/`，并向运行中的 Antigravity 触发热刷新，立即可用。
+
 > [!TIP]
-> 如果您此前手动安装过独立散装技能 `~/.gemini/config/skills/token-monitor/`，升级到本原生插件后建议删除旧目录以避免重复触发——插件已内置完整技能包。
+> 如果您此前手动安装过旧版散装技能 `~/.gemini/config/skills/token-monitor/`，升级到 TokenScope 原生插件后可手动删除该旧目录，避免重复触发。
 
-### 在 Antigravity 中的使用方式
+---
 
-1. **左侧全局全页大屏**：直接点击 Antigravity 左侧导航栏的 **Token Monitor**，随时查看完整监控看板（含**本月累计**、**今日消耗**、日历热力图、模型分布、LiteLLM 成本估算与会话排行榜）。
-2. **右侧辅助栏常驻面板**：从右侧栏 `+` 菜单打开 **Token 用量**（或在对话中让助手打开），首屏突出显示**本月累计 Token / 估算费用**与**今日消耗**，支持边聊边看与一键刷新。
-3. **对话内直接问询**：直接在对话中提问“今天用了多少 token”或“本月累计消耗多少”，内置 `token-monitor` Skill 会自动调用 `get_token_usage_summary` 返回精准报表。
+## 核心技术与项目架构
+
+```text
+Core (纯配置/周期汇总) → Storage → Acquisition (回环直连/进程探测/SQLite) → Analysis (精确去重/计价) → Orchestration → Presentation (MCP App / VS Code)
+```
+
+- **全链路精确去重引擎**：优先解析权威 `raw.chatModel.usage`，屏蔽顶层翻倍脏字段与 `retryInfos` 镜像；正交拆分 `responseOutputTokens` 与 `thinkingOutputTokens`；基于 `responseId` 执行跨会话所有权仲裁消除 Subagent 虚高；自动融合 `transcript.jsonl` 中的撤回/重发分支。
+- **真实逐日分模型计费**：提取 SQLite `steps` 时间戳与 `created_at`，将每次模型调用精准归入真实发生日期并按当日模型构成独立估算费用。
+- **模块结构**：
+  - `src/core/` — 无宿主依赖的纯配置、通用接口抽象与今日/本月/全量汇总器
+  - `src/mcp/` — Antigravity MCP App `stdio` 服务端（SEP-1865 + `com.google.antigravity/ui`）、回环安全校验直连器与体积受控的自包含工具处理器
+  - `src/rpc/` — 跨平台进程探测、HTTP/HTTPS 本地 RPC 客户端、`node:sqlite` 直读与增量导出
+  - `src/parser/` & `src/monitor/` — 规范化解析、跨会话去重、文件锁与非阻塞轮询编排
+  - `src/pricing/` — LiteLLM 价格表同步与模型别名解析（支持 Gemini 4 系列、Gemini 3.8、Claude 5.5 / 4.6、GPT-OSS 等）
+  - `src/webview/` — 双模 Svelte 5 前端（`HostBridge` + `ThemeBridge`，同时服务 Antigravity MCP App 与 VS Code）
+  - `plugin-template/` & `scripts/` — 已脱敏的开源插件模板、单文件打包与跨平台一键安装脚本
 
 ---
 
@@ -92,49 +93,28 @@ npm run install:plugin
 原 VS Code 扩展与 Antigravity 原生插件共享同一套核心引擎与 Svelte 5 组件。如需打包 VSIX：
 
 ```bash
-# 运行类型检查、测试与 VSIX 打包
-npm run typecheck
-npm run typecheck:webview
-npm run test:webview
-npm run package
+npm run typecheck && npm run typecheck:webview && npm run test:webview && npm run package
 ```
 
-Windows 用户也可以直接运行根目录的一键安装脚本：
-
-```powershell
-.\install-extension.ps1
-```
-
-或在 VS Code 中按 `Ctrl+Shift+P` 执行 `Extensions: Install from VSIX...` 选择打包生成的 `.vsix` 文件。
+Windows 用户也可直接运行根目录的 `.\install-extension.ps1`，或在 VS Code 中执行 `Extensions: Install from VSIX...`。
 
 ---
 
-## 项目架构
+## 隐私声明与免责
 
-```
-Core (配置/汇总) → Storage → Data Acquisition → Analysis → Orchestration → Presentation (MCP App / VS Code)
-```
-
-- `src/core/` — 无宿主依赖的纯配置管理、通用接口抽象以及统一口径的今日/本月/全量用量汇总
-- `src/mcp/` — Antigravity MCP App `stdio` 服务端（SEP-1865 + `com.google.antigravity/ui`）、环境变量直连探测与工具处理器
-- `src/rpc/` — 进程探测、HTTP/HTTPS 本地 RPC 客户端、SQLite `.db` 原生解析与增量导出
-- `src/parser/` — 规范化 Token 解析与单步每日分模型明细归因
-- `src/monitor/` — 会话扫描、跨会话 `responseId` 去重、撤回分支融合、服务调度与文件锁
-- `src/pricing/` — 基于 LiteLLM 的模型匹配、别名归一化与成本估算
-- `src/storage/` — RPC 缓存及按月分片的会话状态持久化
-- `src/statusBar/` & `src/webview/` — Svelte 5 看板 / 侧边栏组件及双模通信/主题自适应桥（Antigravity MCP App + VS Code）
-- `plugin-template/` — 已脱敏的开源插件模板（`plugin.json`、`mcp_config.json`、`logo.svg` 与内置 `SKILL.md`）
+- **100% 本地运算**：所有会话扫描、数据库读取与统计分析均在本地完成，绝不上传对话内容或隐私数据；仅向 GitHub 拉取公开的 [LiteLLM 模型定价 JSON](https://github.com/BerriAI/litellm)；直连环境变量强制限制仅允许回环地址（`127.0.0.1` / `localhost` / `::1`）。
+- **非官方社区工具**：与 Google 无关；依赖 Antigravity 本地持久化数据与内部 RPC 接口；估算费用仅供参考，不作财务结算依据。
 
 ---
 
-## Inspired By
+## 致谢与上游声明（Upstream Attribution）
+
+**Antigravity TokenScope** 起源于对开源项目 **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)**（MIT License）的深度重构与演进，现已发展为原生的 Antigravity MCP App 可观测性插件，完整保留原作者版权声明并致以敬意：
 
 - **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)** — 原作者与基础项目
 - **[antigravity-storage-manager](https://github.com/unchase/antigravity-storage-manager)** — 会话 Token 解析思路参考
 - **[tokscale](https://github.com/junhoyeo/tokscale)** — 用量追踪与可视化灵感
 
----
-
 ## License
 
-This project is licensed under the MIT License — see [LICENSE](../LICENSE) for details.
+MIT License — 详见 [LICENSE](../LICENSE)。如果 **Antigravity TokenScope** 帮您省下了频繁切窗口的时间或揪出了隐形 Token 消耗，欢迎在 GitHub 点一颗 ⭐ Star 支持！

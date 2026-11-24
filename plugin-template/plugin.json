@@ -1,8 +1,8 @@
 {
   "name": "antigravity-token-monitor",
-  "displayName": "Antigravity Token Monitor",
+  "displayName": "Antigravity TokenScope",
   "version": "1.0.0",
-  "description": "Real-time Antigravity session token usage & cost monitor with monthly cumulative KPIs, daily heatmap, model breakdown, and native global/aux-pane dashboards.",
+  "description": "Native token & cost observability inside Antigravity — exact deduplicated accounting, monthly/daily KPIs, per-day activity heatmap, and real-time global & aux-pane dashboards.",
   "logo": "assets/logo.svg",
   "suggestedPrompts": [
     "统计一下我本月的 Token 累计消耗和预估费用",

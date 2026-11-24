@@ -1,89 +1,90 @@
-# Antigravity Token Monitor (Enhanced & Exact Accounting Edition)
+<div align="center">
+
+<img src="plugin-template/assets/logo.svg" width="84" alt="Antigravity TokenScope Logo" />
+
+# Antigravity TokenScope
+
+**Native Token & Cost Observability Inside Antigravity — Zero Double-Counting, Zero Cloud Upload, No VS Code Required.**
+
+[![Antigravity](https://img.shields.io/badge/Antigravity-Native%20MCP%20App-0f766e?style=flat-square)](https://antigravity.google/)
+[![MCP Apps](https://img.shields.io/badge/MCP%20Apps-SEP--1865-2563eb?style=flat-square)](https://github.com/modelcontextprotocol/ext-apps)
+[![Svelte 5](https://img.shields.io/badge/UI-Svelte%205-ff3e00?style=flat-square&logo=svelte&logoColor=white)](https://svelte.dev/)
+[![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local-16a34a?style=flat-square)](#-privacy--disclaimer)
+[![License: MIT](https://img.shields.io/badge/License-MIT-eab308?style=flat-square)](LICENSE)
 
 **English** | [简体中文](docs/README.zh-CN.md)
 
-[![VS Code](https://img.shields.io/badge/VS%20Code-Extension-007ACC?logo=visualstudiocode)](https://code.visualstudio.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript)](https://www.typescriptlang.org/)
-[![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)](https://svelte.dev/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-> Real-time, deduplicated, and accurate Antigravity session token & cost monitoring — **natively inside Antigravity** (left sidebar global dashboard, right auxiliary pane monthly/daily KPIs, and in-chat queries) as well as VS Code.
-
-> [!NOTE]
-> **Upstream Attribution**
-> This fork builds upon **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)** (MIT License) with deep bug fixes, Windows support, exact cross-session deduplication, per-day per-model cost accounting, and Simplified Chinese UI localization. All original copyright notices are preserved with respect to the upstream author.
-
-![Dashboard Preview](docs/screenshot.png)
+</div>
 
 ---
 
-## Core Enhancements in This Fork
+![Antigravity TokenScope Dashboard](docs/screenshot.png)
 
-Building on the upstream architecture, this edition resolves critical inaccuracies in token acquisition, duplicate counting, daily attribution, and model pricing:
+## Why Antigravity TokenScope?
 
-- 🎯 **End-to-End Exact Deduplication (Zero Double-Counting, Zero Omissions)**
-  - Prioritizes the authoritative `raw.chatModel.usage` payload, ignoring legacy doubled top-level cache fields and duplicate `retryInfos` mirrors for the same request.
-  - Splits `outputTokens` orthogonally into pure response output (`responseOutputTokens`) and reasoning tokens (`thinkingOutputTokens`) so reasoning tokens are never counted twice.
-  - Skips fallback `steps.jsonl` usage payloads whenever authoritative `usage.jsonl` records are present.
-  - Arbitrates cross-session ownership by unique request ID (`responseId` / `messageId`), eliminating multi-fold inflation from cloned history between parent sessions and subagents/forks.
-  - Automatically fuses real `PLANNER_RESPONSE` calls from `transcript.jsonl` on reverted or edited branches that would otherwise be overwritten.
-- 📅 **True Daily Activity Heatmap & Per-Model Cost Calculation**
-  - Resolves per-step timestamps from SQLite `steps` tables, exported `stepIndices`, and `transcript.jsonl` `created_at` fields to attribute every model call to the exact local calendar date (`YYYY-MM-DD`) on which it occurred.
-  - Computes each day's estimated cost (`costUsd`) strictly from that day's actual per-model token breakdown (`input` / `output` / `reasoning` / `cacheRead` / `cacheWrite`) rather than spreading a global historical average across days.
-- 🗄️ **Native SQLite `.db` Reading & 50MB Large-File Support**
-  - Adds `sqliteTrajectoryReader` to read `steps` and `gen_metadata` directly from `conversations/<sessionId>.db` when RPC summaries are unavailable or offline.
-  - Raises the default `maxFileBytes` limit to `52428800` (50 MB) to prevent large long-running sessions from being truncated, while retaining both active and monthly-archived sessions.
-- 🔄 **Automatic Real-Time Incremental Sync**
-  - Combines scheduled polling with debounced file watchers on `conversations/` and `brain/` so new sessions and updates sync automatically without manual intervention.
-- 🪟 **Windows Support & Modern Model Pricing**
-  - Fixes Windows process/port detection and case-insensitive path matching.
-  - Supports placeholder resolution, alias canonicalization, and LiteLLM official pricing lookups for the Gemini 4 family (Neon, Carbon, Argon, Hydrogen), multi-model Orchestrator (Neon / Carbon / Argon / Claude Opus 5.5), Gemini 3.8 Flash, Claude Opus/Sonnet 5.5 & 4.6, GPT-OSS 120B, and more.
-- 🌐 **Simplified Chinese UI**
-  - Full Simplified Chinese localization across the webview dashboard, Activity Bar sidebar, status bar tooltips, and extension settings.
+Ever wondered how many tokens your Antigravity agents actually consumed **today** or **this month**—without switching editors, without 2x–5x subagent inflation, and without sending a single byte of your prompts to third-party servers?
+
+**Antigravity TokenScope** runs natively inside Antigravity as an **MCP App Plugin** (while keeping the original VS Code extension in maintenance mode), turning raw session logs, SQLite databases, and localhost RPC metadata into an exact, real-time cost & usage observatory.
+
+| Dimension | Antigravity TokenScope | Traditional External / Naive Counters |
+| :--- | :--- | :--- |
+| **Native Workflow** | Built right into Antigravity's left sidebar (`global`), right aux pane (`aux_pane`), and chat | Requires switching to VS Code or running manual terminal scripts |
+| **Accounting Accuracy** | Orthogonal Thinking/Output split, cross-session `responseId` arbitration, reverted-branch fusion | Double-counts reasoning tokens, retries, and cloned subagent history (2x–5x inflated) |
+| **Daily & Monthly Insights** | Hero **Monthly Cumulative** KPI, **Today's Exact Breakdown**, true local-date daily heatmap & cost | Mixes multi-day sessions into the latest day or averages historical prices |
+| **Speed & Resilience** | Non-blocking `< 200ms` warm boot, native `node:sqlite` `.db` reader, 50 MB large-session support | Blocks UI on cold scans or truncates long sessions |
+| **Privacy** | 100% local parsing & `127.0.0.1` loopback-only RPC; zero telemetry | Often requires external proxies or cloud sync |
 
 ---
 
-## ⚠️ Disclaimer
+## Three Native Entry Points Inside Antigravity
 
-> [!WARNING]
->
-> - This is an unofficial community open-source tool and is not affiliated with Google.
-> - It relies on Antigravity's local persisted files and internal `127.0.0.1` RPC endpoints, whose schemas may change across software updates.
-> - Cost estimates are calculated using the open-source [LiteLLM pricing catalog](https://github.com/BerriAI/litellm) and built-in fallbacks for reference only—do not use them for billing reconciliation.
-> - All session scanning, parsing, and analytics run locally on your machine; no conversation content or private data is ever uploaded (the only external network request fetches the public LiteLLM pricing JSON from GitHub).
+1. **Left Sidebar Global Dashboard (`TokenScope`)**
+   Full-page Svelte 5 observatory featuring **Monthly Cumulative Usage**, **Today's Token Breakdown** (Input / Output / Cache / Reasoning), interactive **Daily Activity Heatmap**, **Model Usage & LiteLLM Cost**, **Data Accuracy Coverage**, and **Session Leaderboard**—auto-adapting to Antigravity Light & Dark themes.
+2. **Right Auxiliary Pane (`Token 用量`)**
+   Open from the side pane `+` menu for a persistent compact companion card highlighting **This Month's Total**, **Today's Consumption**, and **Today's Token Mix** while you chat.
+3. **Conversational Queries (Bundled Skill)**
+   Ask `"How many tokens did I spend this month?"` or `"今天用了多少 token"` right in chat—the bundled `token-monitor` skill invokes the local MCP tools and returns an accurate breakdown.
 
 ---
 
-## Getting Started (Antigravity Native Plugin — Recommended)
+## 60-Second Quick Start (Antigravity Native Plugin)
 
 ### Prerequisites
 
-- [Antigravity](https://antigravity.google/) running locally or saved sessions under `~/.gemini/antigravity`
-- [Node.js](https://nodejs.org/) `≥ 22` (provides built-in `node:sqlite` for direct `.db` reading; Node 20+ automatically falls back to RPC/filesystem parsing)
+- [Antigravity](https://antigravity.google/) installed locally (or existing sessions under `~/.gemini/antigravity`)
+- [Node.js](https://nodejs.org/) `≥ 22` (provides built-in `node:sqlite` for direct `.db` reading; Node 20+ falls back automatically to RPC & filesystem parsing)
 
-### 3-Step Build & Install from Source
+### Install in 3 Commands
 
 ```bash
-# 1. Clone and install dependencies
 git clone https://github.com/215meng/antigravity-token-monitor.git
 cd antigravity-token-monitor
-npm install
-
-# 2. Build the Antigravity MCP App plugin bundle (single-file HTML + stdio MCP server)
-npm run build:plugin
-
-# 3. Install into ~/.gemini/config/plugins/antigravity-token-monitor/
-npm run install:plugin
+npm install && npm run build:plugin && npm run install:plugin
 ```
 
+`install:plugin` packages the self-contained single-file MCP App UI (`< 800 KiB`) + stdio MCP server into `~/.gemini/config/plugins/antigravity-token-monitor/` and hot-refreshes your running Antigravity instance.
+
 > [!TIP]
-> If you previously installed a standalone skill at `~/.gemini/config/skills/token-monitor/`, you can delete that old folder after installing the plugin to avoid duplicate skill triggers—the skill is now bundled directly inside the plugin.
+> Upgrading from an older standalone skill at `~/.gemini/config/skills/token-monitor/`? You can delete that legacy folder after installing—TokenScope bundles the updated skill cleanly inside the plugin.
 
-### Usage in Antigravity
+---
 
-1. **Global Full-Page Dashboard**: Click **Token Monitor** in the Antigravity left sidebar for the complete KPI strip (including **This Month Cumulative** & **Today**), daily activity heatmap, model usage breakdown, LiteLLM cost estimate, and session leaderboard.
-2. **Auxiliary Side Pane**: Open **Token 用量** from the side pane `+` menu (or ask the agent to open the sidebar) for a persistent compact view highlighting **Monthly Cumulative** and **Today's Usage**.
-3. **In-Chat Queries**: Ask `"How many tokens did I use this month?"` or `"今天用了多少 token"`—the bundled `token-monitor` skill automatically invokes `get_token_usage_summary`.
+## Under the Hood: Exact Accounting & Architecture
+
+```text
+Core (Config / UsageSummary) → Storage → Acquisition (Loopback Env / Process / SQLite) → Analysis (Dedup / Pricing) → Orchestration → Presentation (MCP App / VS Code)
+```
+
+- **Zero Double-Counting Engine**: Prioritizes authoritative `raw.chatModel.usage`, orthogonally separates `responseOutputTokens` and `thinkingOutputTokens`, arbitrates cross-session `responseId` ownership across subagent forks, and fuses reverted/edited `PLANNER_RESPONSE` branches from `transcript.jsonl`.
+- **True Per-Day Attribution**: Resolves per-step timestamps from SQLite `steps` tables, `stepIndices`, and `created_at` so every call lands on its exact local calendar date and is priced by that day's real model mix.
+- **Module Layout**:
+  - `src/core/` — Host-agnostic configuration, minimal logger/disposable interfaces, and unified today/month/all-time aggregators
+  - `src/mcp/` — Antigravity MCP App stdio server (`SEP-1865` + `com.google.antigravity/ui`), loopback-verified `envLocator`, and self-contained bounded tool handlers
+  - `src/rpc/` — Windows/macOS/Linux process detection, HTTP/HTTPS localhost RPC client, native `node:sqlite` reader, and incremental JSONL exporter
+  - `src/parser/` & `src/monitor/` — Canonical token extraction, cross-session deduplication, file locks, and non-blocking polling service
+  - `src/pricing/` — LiteLLM pricing catalog matching and alias resolution (Gemini 4 family, Gemini 3.8, Claude 5.5 / 4.6, GPT-OSS, etc.)
+  - `src/webview/` — Dual-mode Svelte 5 UI (`HostBridge` + `ThemeBridge` for both Antigravity MCP App and VS Code)
+  - `plugin-template/` & `scripts/` — Clean open-source plugin manifest, `${PLUGIN_ROOT}`/`${PLUGIN_DATA}` config, single-file builder, and cross-platform installer
 
 ---
 
@@ -92,49 +93,28 @@ npm run install:plugin
 The original VS Code extension shares the same core engine and Svelte 5 components. To build and install the `.vsix` package:
 
 ```bash
-# Run type checks, unit tests, and package VSIX
-npm run typecheck
-npm run typecheck:webview
-npm run test:webview
-npm run package
+npm run typecheck && npm run typecheck:webview && npm run test:webview && npm run package
 ```
 
-On Windows, you can run the one-click installer script at the repository root:
-
-```powershell
-.\install-extension.ps1
-```
-
-Alternatively, open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) in VS Code and run `Extensions: Install from VSIX...`, then select the generated `.vsix` file.
+On Windows, run `.\install-extension.ps1` or install the generated `.vsix` via **Extensions: Install from VSIX...**.
 
 ---
 
-## Architecture
+## Privacy & Disclaimer
 
-```
-Core (Types/Config/Summary) → Storage → Data Acquisition → Analysis → Orchestration → Presentation (MCP App / VS Code)
-```
-
-- `src/core/` — Host-agnostic configuration, minimal logger/disposable interfaces, and unified period usage summaries (`today` / `month` / `all`)
-- `src/mcp/` — Antigravity MCP App stdio server (`SEP-1865` + `com.google.antigravity/ui`), env-var direct RPC locator, and tool handlers
-- `src/rpc/` — Process detection, localhost HTTP/HTTPS RPC client, native SQLite `.db` reader, and incremental JSONL exporter
-- `src/parser/` — Canonical token extraction and per-step daily model breakdown attribution
-- `src/monitor/` — Session scanning, cross-session `responseId` deduplication, reverted-branch fusion, polling orchestration, and file locks
-- `src/pricing/` — LiteLLM catalog fetching, alias matching, and per-model cost calculation
-- `src/storage/` — Local RPC artifact cache and monthly-sharded session state persistence
-- `src/statusBar/` & `src/webview/` — Svelte 5 dashboard/sidebar UI with dual-mode `HostBridge` & `ThemeBridge` (Antigravity MCP App + VS Code Webview)
-- `plugin-template/` — Desensitized Antigravity plugin manifest, `${PLUGIN_ROOT}`/`${PLUGIN_DATA}` MCP config, logo, and bundled skill
+- **100% Local Processing**: All session scanning, SQLite reads, and analytics happen strictly on your machine. The only external request fetches the public [LiteLLM pricing JSON](https://github.com/BerriAI/litellm) for cost estimation; loopback RPC enforces `127.0.0.1` / `localhost` / `::1` only.
+- **Unofficial Community Tool**: Not affiliated with Google. Internal Antigravity schemas and `127.0.0.1` RPC methods may change across updates; cost estimates are for reference only, not billing reconciliation.
 
 ---
 
-## Inspired By
+## Upstream Attribution & Credits
 
-- **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)** — Upstream project and original author
+Antigravity TokenScope began as a deep fork of **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)** (MIT License) and has since evolved with native Antigravity MCP App integration, an exact cross-session deduplication & daily attribution engine, Windows & SQLite support, and dual-theme observability UI. All upstream copyright notices are preserved with gratitude.
+
+- **[ddarkr/antigravity-token-monitor](https://github.com/ddarkr/antigravity-token-monitor)** — Original project and foundation
 - **[antigravity-storage-manager](https://github.com/unchase/antigravity-storage-manager)** — Session token parsing reference
-- **[tokscale](https://github.com/junhoyeo/tokscale)** — Usage tracking and visualization inspiration
-
----
+- **[tokscale](https://github.com/junhoyeo/tokscale)** — Usage tracking & visualization inspiration
 
 ## License
 
-This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE). If **Antigravity TokenScope** saves you time or catches hidden token spikes, consider giving it a ⭐ on GitHub!
