@@ -9,6 +9,8 @@ export type RpcConnectionInfo = {
   pid: number;
   port: number;
   csrfToken: string;
+  protocol?: 'http' | 'https';
+  hostname?: string;
 };
 
 export type ProcessCandidate = {

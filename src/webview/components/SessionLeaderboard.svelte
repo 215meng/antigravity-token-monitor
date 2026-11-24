@@ -143,7 +143,7 @@
     transition: background-color 120ms;
   }
   tbody tr:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface-subtle, rgba(255, 255, 255, 0.03));
   }
   tbody tr:last-child td {
     border-bottom: none;
@@ -199,9 +199,9 @@
     letter-spacing: 0.02em;
   }
   .status-archived {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface-subtle, rgba(255, 255, 255, 0.03));
     color: var(--muted);
-    border: 1px dashed rgba(255, 255, 255, 0.15);
+    border: 1px dashed var(--line);
   }
   .mode-reported {
     background: rgba(136, 216, 176, 0.1);
@@ -214,12 +214,12 @@
     border: 1px solid rgba(247, 200, 115, 0.2);
   }
   .source-rpc-artifact {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--surface-subtle, rgba(255, 255, 255, 0.05));
     color: var(--muted);
     border: 1px solid var(--line);
   }
   .source-filesystem {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle, rgba(255, 255, 255, 0.02));
     color: var(--muted);
     border: 1px solid var(--line);
   }

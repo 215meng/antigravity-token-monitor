@@ -141,7 +141,7 @@
   }
   .bar-container {
     height: 3px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--track-bg, rgba(255, 255, 255, 0.04));
     border-radius: 1.5px;
     overflow: hidden;
     box-shadow: inset 0 0 0 1px var(--surface-line);
@@ -167,7 +167,7 @@
     text-transform: uppercase;
   }
   .tag-neutral {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--surface-subtle, rgba(255, 255, 255, 0.04));
     color: var(--text);
     border: 1px solid var(--line);
   }
@@ -177,12 +177,12 @@
     border: 1px solid rgba(136, 216, 176, 0.2);
   }
   .tag-exported {
-    background: rgba(115, 184, 255, 0.1);
-    color: #9fd5ff;
+    background: rgba(115, 184, 255, 0.12);
+    color: var(--accent);
     border: 1px solid rgba(115, 184, 255, 0.24);
   }
   .bar-neutral {
-    background: rgba(255, 255, 255, 0.35);
+    background: var(--bar-neutral, rgba(255, 255, 255, 0.35));
   }
   .bar-active {
     background: var(--accent-strong);

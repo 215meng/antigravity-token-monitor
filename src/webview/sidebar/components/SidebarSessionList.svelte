@@ -8,10 +8,11 @@
   const MAX_COLLAPSED = 5;
   let expanded = false;
 
-  $: active最近活跃会话 = sessions.filter(s => s.status === 'active');
-  $: archived最近活跃会话 = sessions.filter(s => s.status === 'archived');
-  $: visibleActive = expanded ? active最近活跃会话 : active最近活跃会话.slice(0, MAX_COLLAPSED);
-  $: hiddenActiveCount = Math.max(0, active最近活跃会话.length - MAX_COLLAPSED);
+  $: activeSessions = sessions.filter(s => s.status === 'active');
+  $: archivedSessions = sessions.filter(s => s.status === 'archived');
+  $: visibleActive = expanded ? activeSessions : activeSessions.slice(0, MAX_COLLAPSED);
+  $: hiddenActiveCount = Math.max(0, activeSessions.length - MAX_COLLAPSED);
+  $: maxSessionTokens = Math.max(...sessions.map(s => s.latest.totalTokens), 1);
 
   function toggle() {
     expanded = !expanded;
@@ -21,7 +22,7 @@
 <section class="session-list">
   <div class="section-header">
     <h3 class="section-label">最近活跃会话</h3>
-    <span class="session-count">{active最近活跃会话.length} active</span>
+    <span class="session-count">{activeSessions.length} active</span>
   </div>
 
   {#if visibleActive.length > 0}
@@ -48,7 +49,7 @@
             <div
               class="session-bar-fill"
               class:estimated={session.mode === 'estimated'}
-              style="width: {sessions.length > 0 ? (session.latest.totalTokens / Math.max(...sessions.map(s => s.latest.totalTokens), 1)) * 100 : 0}%"
+              style="width: {sessions.length > 0 ? (session.latest.totalTokens / maxSessionTokens) * 100 : 0}%"
             ></div>
           </div>
         </button>
@@ -65,12 +66,12 @@
       </button>
     {/if}
 
-    {#if expanded && archived最近活跃会话.length > 0}
+    {#if expanded && archivedSessions.length > 0}
       <div class="archived-divider">
-        <span>{archived最近活跃会话.length} archived</span>
+        <span>{archivedSessions.length} archived</span>
       </div>
       <div class="sessions">
-        {#each archived最近活跃会话 as session (session.sessionId)}
+        {#each archivedSessions as session (session.sessionId)}
           <button
             class="session-item archived"
             on:click={() => onOpenSession(session.sessionId)}
@@ -126,7 +127,7 @@
     flex-direction: column;
     gap: 2px;
     padding: var(--spacing-sm);
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle, rgba(255, 255, 255, 0.02));
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -136,7 +137,7 @@
     transition: background 120ms, border-color 120ms;
   }
   .session-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--track-bg, rgba(255, 255, 255, 0.06));
     border-color: var(--line);
   }
   .session-item.archived {
@@ -179,7 +180,7 @@
   }
   .session-bar-track {
     height: 2px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--track-bg, rgba(255, 255, 255, 0.04));
     border-radius: 1px;
     overflow: hidden;
     margin-top: 1px;

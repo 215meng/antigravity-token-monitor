@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import * as vscode from 'vscode';
-import { MonitorConfig } from '../config';
+import type { MonitorConfig } from '../core/config';
+import type { MonitorDisposable, MonitorLogger } from '../core/types';
 import { resolveParsePlan } from './sourceResolver';
 import { AntigravitySessionParser } from '../parser/antigravitySessionParser';
 import { TrajectoryExporter } from '../rpc/trajectoryExporter';
@@ -68,7 +68,7 @@ type PricingState = {
   error?: string;
 };
 
-export class TokenMonitorService implements vscode.Disposable {
+export class TokenMonitorService implements MonitorDisposable {
   private readonly listeners = new Set<Listener>();
   private timer: NodeJS.Timeout | null = null;
   private exportTimer: NodeJS.Timeout | null = null;
@@ -97,25 +97,42 @@ export class TokenMonitorService implements vscode.Disposable {
     private readonly parserFactory: (config: MonitorConfig) => AntigravitySessionParser,
     private readonly calculator: SessionUsageCalculator,
     private readonly store: SnapshotStore,
-    private readonly outputChannel: vscode.OutputChannel
+    private readonly logger: MonitorLogger
   ) {}
 
-  async initialize(): Promise<void> {
+  async initialize(options?: { waitForInitialSync?: boolean; skipInitialSync?: boolean }): Promise<void> {
     this.state = normalizePersistedState(await this.store.load());
-    await this.exportNow({ force: false, refreshAfter: true });
     this.stopTimer();
     this.stopExportTimer();
     this.startTimer();
     this.startExportTimer();
     this.startWatchers();
+
+    if (options?.skipInitialSync) {
+      this.emit();
+      return;
+    }
+
+    const initialSync = this.exportNow({ force: false, refreshAfter: true }).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.lastError = message;
+      this.log(`Initial sync failed: ${message}`);
+      this.emit();
+    });
+
+    if (options?.waitForInitialSync !== false) {
+      await initialSync;
+    }
   }
 
-  onDidChange(listener: Listener): vscode.Disposable {
+  onDidChange(listener: Listener): MonitorDisposable {
     this.listeners.add(listener);
     listener(this.getDashboardState());
-    return new vscode.Disposable(() => {
-      this.listeners.delete(listener);
-    });
+    return {
+      dispose: () => {
+        this.listeners.delete(listener);
+      }
+    };
   }
 
   getDashboardState(): DashboardState {
@@ -588,7 +605,7 @@ export class TokenMonitorService implements vscode.Disposable {
       return;
     }
 
-    this.outputChannel.appendLine(`[${new Date().toISOString()}] ${message}`);
+    this.logger.appendLine(`[${new Date().toISOString()}] ${message}`);
   }
 
   private async refreshPricing(): Promise<void> {

@@ -1,0 +1,12 @@
+{
+  "name": "antigravity-token-monitor",
+  "displayName": "Antigravity Token Monitor",
+  "version": "1.0.0",
+  "description": "Real-time Antigravity session token usage & cost monitor with monthly cumulative KPIs, daily heatmap, model breakdown, and native global/aux-pane dashboards.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "统计一下我本月的 Token 累计消耗和预估费用",
+    "查看今天用了多少 Token，以及各模型的使用分布",
+    "在侧边栏打开 Token 用量监控面板"
+  ]
+}

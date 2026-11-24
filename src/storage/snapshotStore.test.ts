@@ -2,7 +2,6 @@ import * as fs from 'fs/promises';
 import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
-import type * as vscode from 'vscode';
 import { describe, expect, it } from 'vitest';
 import type { PersistedSessionState, SessionTotals } from '../types';
 import { SnapshotStore } from './snapshotStore';
@@ -10,7 +9,7 @@ import { SnapshotStore } from './snapshotStore';
 describe('SnapshotStore', () => {
   it('writes only active sessions to monitor-state.json and shards archived sessions by month', async () => {
     const storagePath = await mkdtemp(path.join(tmpdir(), 'antigravity-snapshot-store-'));
-    const store = new SnapshotStore(createExtensionContext(storagePath));
+    const store = new SnapshotStore(storagePath);
 
     await store.save({
       lastPollAt: 1_710_000_000_000,
@@ -53,7 +52,7 @@ describe('SnapshotStore', () => {
       }
     }, null, 2), 'utf8');
 
-    const store = new SnapshotStore(createExtensionContext(storagePath));
+    const store = new SnapshotStore(storagePath);
     const loaded = await store.load();
 
     expect(loaded.lastPollAt).toBe(1_710_000_000_000);
@@ -74,7 +73,7 @@ describe('SnapshotStore', () => {
       }
     }, null, 2), 'utf8');
 
-    const store = new SnapshotStore(createExtensionContext(storagePath));
+    const store = new SnapshotStore(storagePath);
     const loaded = await store.load();
 
     expect(loaded.sessions.duplicated?.lifecycle.status).toBe('active');
@@ -83,7 +82,7 @@ describe('SnapshotStore', () => {
 
   it('removes obsolete archive shards when archived sessions reactivate into active state', async () => {
     const storagePath = await mkdtemp(path.join(tmpdir(), 'antigravity-snapshot-store-'));
-    const store = new SnapshotStore(createExtensionContext(storagePath));
+    const store = new SnapshotStore(storagePath);
 
     await store.save({
       sessions: {
@@ -112,7 +111,7 @@ describe('SnapshotStore', () => {
       }
     }, null, 2), 'utf8');
 
-    const store = new SnapshotStore(createExtensionContext(storagePath));
+    const store = new SnapshotStore(storagePath);
     const loaded = await store.load();
     await store.save(loaded);
 
@@ -175,134 +174,4 @@ function buildTotals(sessionId: string, totalTokens: number, capturedAt: number)
     reasoningTokens: totalTokens - Math.floor(totalTokens * 0.5) - Math.floor(totalTokens * 0.25) - Math.floor(totalTokens * 0.15) - Math.floor(totalTokens * 0.05),
     totalTokens
   };
-}
-
-function createExtensionContext(globalStoragePath: string): vscode.ExtensionContext {
-  const uri = createUri(globalStoragePath);
-  const noopDisposable = { dispose() {} };
-  const noopEvent = <T,>(): vscode.Event<T> => (_listener) => noopDisposable;
-  const memento = createMemento();
-  const environmentVariableCollection = createEnvironmentVariableCollection();
-
-  return {
-    subscriptions: [],
-    workspaceState: memento,
-    globalState: {
-      ...memento,
-      setKeysForSync() {}
-    },
-    secrets: {
-      keys: async () => [],
-      get: async () => undefined,
-      store: async () => {},
-      delete: async () => {},
-      onDidChange: noopEvent()
-    },
-    extensionUri: uri,
-    extensionPath: globalStoragePath,
-    environmentVariableCollection,
-    asAbsolutePath: (relativePath: string) => path.join(globalStoragePath, relativePath),
-    storageUri: uri,
-    storagePath: globalStoragePath,
-    globalStorageUri: uri,
-    globalStoragePath,
-    logUri: uri,
-    logPath: globalStoragePath,
-    extensionMode: 3,
-    extension: {
-      id: 'test.antigravity-token-monitor',
-      extensionUri: uri,
-      extensionPath: globalStoragePath,
-      isActive: true,
-      packageJSON: {},
-      extensionKind: 2,
-      exports: undefined,
-      activate: async () => undefined
-    },
-    languageModelAccessInformation: {
-      onDidChange: noopEvent(),
-      canSendRequest: () => false
-    }
-  };
-}
-
-function createUri(fsPath: string): vscode.Uri {
-  return {
-    scheme: 'file',
-    authority: '',
-    path: fsPath,
-    query: '',
-    fragment: '',
-    fsPath,
-    with(change) {
-      return createUri(change.path ?? fsPath);
-    },
-    toString() {
-      return fsPath;
-    },
-    toJSON() {
-      return {
-        scheme: 'file',
-        authority: '',
-        path: fsPath,
-        query: '',
-        fragment: ''
-      };
-    }
-  } as vscode.Uri;
-}
-
-function createMemento(): vscode.Memento {
-  const values = new Map<string, unknown>();
-  return {
-    keys: () => Array.from(values.keys()),
-    get: <T>(key: string, defaultValue?: T) => (values.has(key) ? values.get(key) as T : defaultValue as T),
-    update: async (key: string, value: unknown) => {
-      if (value === undefined) {
-        values.delete(key);
-        return;
-      }
-
-      values.set(key, value);
-    }
-  };
-}
-
-function createEnvironmentVariableCollection(): vscode.GlobalEnvironmentVariableCollection {
-  const entries = new Map<string, vscode.EnvironmentVariableMutator>();
-  const collection: vscode.GlobalEnvironmentVariableCollection = {
-    persistent: true,
-    description: undefined,
-    replace(variable: string, value: string) {
-      entries.set(variable, { type: 1, value, options: { applyAtProcessCreation: true } });
-    },
-    append(variable: string, value: string) {
-      entries.set(variable, { type: 2, value, options: { applyAtProcessCreation: true } });
-    },
-    prepend(variable: string, value: string) {
-      entries.set(variable, { type: 3, value, options: { applyAtProcessCreation: true } });
-    },
-    get(variable: string) {
-      return entries.get(variable);
-    },
-    forEach(callback) {
-      for (const [variable, mutator] of entries) {
-        callback(variable, mutator, collection);
-      }
-    },
-    delete(variable: string) {
-      entries.delete(variable);
-    },
-    clear() {
-      entries.clear();
-    },
-    getScoped() {
-      return collection;
-    },
-    [Symbol.iterator]() {
-      return entries[Symbol.iterator]();
-    }
-  };
-
-  return collection;
 }

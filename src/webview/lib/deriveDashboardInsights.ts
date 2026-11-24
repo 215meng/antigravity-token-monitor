@@ -1,12 +1,18 @@
 import type { DashboardState, TokenBreakdown } from '../../types';
+import { computePeriodUsage, type PeriodUsageSummary } from '../../core/usageSummary';
 
 type DerivedDashboardInsights = DashboardState & {
   tokenBreakdown: TokenBreakdown;
+  monthlyUsage: PeriodUsageSummary;
+  todayUsage: PeriodUsageSummary;
   hasSessions: boolean;
   sortedSessions: DashboardState['sessions'];
 };
 
-export function deriveDashboardInsights(state: DashboardState): DerivedDashboardInsights {
+export function deriveDashboardInsights(
+  state: DashboardState,
+  now: Date = new Date()
+): DerivedDashboardInsights {
   const tokenBreakdown: TokenBreakdown = {
     inputTokens: 0,
     outputTokens: 0,
@@ -25,12 +31,16 @@ export function deriveDashboardInsights(state: DashboardState): DerivedDashboard
     tokenBreakdown.totalTokens += session.latest.totalTokens || 0;
   }
 
+  const periodUsage = computePeriodUsage(state.analytics.activityHeatmap, now);
+
   // In phase 1, we just pass through the state, but this is where we would
   // compute derived metrics like top models, cost estimates, etc.
   return {
     ...state,
     tokenBreakdown,
-    hasSessions: state.sessions.length > 0,
+    monthlyUsage: periodUsage.month,
+    todayUsage: periodUsage.today,
+    hasSessions: state.summary.sessionCount > 0 || state.sessions.length > 0,
     sortedSessions: [...state.sessions].sort((a, b) => {
       if (a.status !== b.status) {
         return a.status === 'active' ? -1 : 1;

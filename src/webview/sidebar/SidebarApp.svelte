@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { dashboardState } from '../lib/dashboardStore';
+  import { dashboardError, dashboardState } from '../lib/dashboardStore';
   import { deriveDashboardInsights } from '../lib/deriveDashboardInsights';
   import { sidebarApi } from './sidebarApi';
   import SidebarKpi from './components/SidebarKpi.svelte';
@@ -39,8 +39,26 @@
     </header>
 
     <main class="sidebar-content">
-      <SidebarKpi summary={insights.summary} pricing={insights.pricing} />
-      <SidebarTokenMix breakdown={insights.tokenBreakdown} />
+      {#if $dashboardError}
+        <div class="error-banner" role="alert">
+          <span>{$dashboardError}</span>
+          <button class="retry-btn" on:click={() => sidebarApi.postMessage({ type: 'sidebar/ready' })}>重试</button>
+        </div>
+      {/if}
+
+      {#if !insights.hasSessions && (insights.syncStatus === 'running' || insights.exportStatus.status === 'running')}
+        <div class="sync-banner" role="status">
+          正在后台扫描本机历史会话，稍后自动刷新...
+        </div>
+      {/if}
+
+      <SidebarKpi
+        summary={insights.summary}
+        pricing={insights.pricing}
+        monthlyUsage={insights.monthlyUsage}
+        todayUsage={insights.todayUsage}
+      />
+      <SidebarTokenMix breakdown={insights.todayUsage} dateLabel={insights.todayUsage.label} />
       <SidebarModelUsage models={insights.analytics.modelUsage} />
       <SidebarHeatmap heatmap={insights.analytics.activityHeatmap} />
       <SidebarSessionList
@@ -49,6 +67,11 @@
       />
       <SidebarSyncStatus state={insights} />
     </main>
+  </div>
+{:else if $dashboardError}
+  <div class="loading error-state">
+    <span class="error-text">{$dashboardError}</span>
+    <button class="retry-btn" on:click={() => sidebarApi.postMessage({ type: 'sidebar/ready' })}>重试加载</button>
   </div>
 {:else}
   <div class="loading">
@@ -70,11 +93,10 @@
     justify-content: space-between;
     padding: var(--spacing-sm) var(--spacing-md);
     border-bottom: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--bg);
     position: sticky;
     top: 0;
     z-index: 10;
-    backdrop-filter: blur(12px);
   }
   .sidebar-title {
     margin: 0;
@@ -120,8 +142,45 @@
     justify-content: center;
     gap: var(--spacing-sm);
     height: 200px;
+    padding: 0 var(--spacing-md);
+    text-align: center;
     color: var(--muted);
     font-size: 12px;
+  }
+  .error-text {
+    color: var(--danger);
+    word-break: break-word;
+  }
+  .retry-btn {
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .sync-banner {
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line);
+    background: rgba(136, 216, 176, 0.08);
+    color: var(--accent);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .error-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--danger);
+    background: var(--bg-elevated);
+    color: var(--danger);
+    font-size: 11px;
+    line-height: 1.4;
   }
   .loading-spinner {
     width: 20px;

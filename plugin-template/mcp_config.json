@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "token-monitor": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/bin/mcp-server.cjs",
+        "--data-dir=${PLUGIN_DATA}"
+      ]
+    }
+  }
+}

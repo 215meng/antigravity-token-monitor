@@ -78,7 +78,7 @@
   }
 
   .config-card {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle, rgba(255, 255, 255, 0.02));
     border: 1px solid var(--surface-line);
     border-radius: 8px;
     padding: var(--spacing-sm);
@@ -102,7 +102,7 @@
   .config-value {
     font-size: 10px;
     color: var(--text);
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--surface-subtle, rgba(0, 0, 0, 0.2));
     padding: var(--spacing-xs) var(--spacing-sm);
     border-radius: 4px;
     border: 1px solid var(--surface-line);

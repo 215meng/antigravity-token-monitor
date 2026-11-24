@@ -1,3 +1,5 @@
+import { dispatchHostMessage } from './hostBridge';
+
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 
 // acquireVsCodeApi() can only be called ONCE per webview.
@@ -16,6 +18,9 @@ function getApi(): { postMessage(message: unknown): void } | undefined {
 
 class VsCodeApiWrapper<TMessage> {
   postMessage(message: TMessage) {
+    if (dispatchHostMessage(message)) {
+      return;
+    }
     const api = getApi();
     if (api) {
       api.postMessage(message);

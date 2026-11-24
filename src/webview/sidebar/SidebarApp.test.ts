@@ -20,12 +20,14 @@ describe('SidebarApp', () => {
 
   it('renders sidebar shell with all sections when state is provided', () => {
     dashboardState.set(mockDashboardState);
-    const { getByText, container } = render(SidebarApp);
+    const { getByText, getAllByText, container } = render(SidebarApp);
 
     // Header
     expect(getByText('Token 用量简报')).toBeTruthy();
 
     // KPI section
+    expect(getByText(/本月累计/)).toBeTruthy();
+    expect(getAllByText(/今日/).length).toBe(2);
     expect(getByText('Token 总消耗量')).toBeTruthy();
     expect(getByText('活跃会话')).toBeTruthy();
     expect(getByText('消息数')).toBeTruthy();

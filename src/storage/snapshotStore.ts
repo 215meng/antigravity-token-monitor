@@ -1,6 +1,5 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as vscode from 'vscode';
 import { PersistedSessionState, PersistedState } from '../types';
 
 const STATE_FILE_NAME = 'monitor-state.json';
@@ -9,7 +8,7 @@ const ARCHIVE_FILE_SUFFIX = '.json';
 
 export class SnapshotStore {
   private saveLock = false;
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  constructor(private readonly storageDir: string) {}
 
   async load(): Promise<PersistedState> {
     const storageDir = this.getStorageDirectoryPath();
@@ -152,11 +151,11 @@ export class SnapshotStore {
   }
 
   private getStorageDirectoryPath(): string {
-    return this.context.globalStorageUri.fsPath;
+    return this.storageDir;
   }
 
   private getStateFilePath(): string {
-    return path.join(this.context.globalStorageUri.fsPath, STATE_FILE_NAME);
+    return path.join(this.storageDir, STATE_FILE_NAME);
   }
 }
 

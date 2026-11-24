@@ -3,6 +3,7 @@
   import { formatCompact } from '../../lib/formatters';
 
   export let breakdown: TokenBreakdown;
+  export let dateLabel = '';
 
   $: cacheTokens = breakdown.cacheReadTokens + breakdown.cacheWriteTokens;
   $: categorizedTotal = breakdown.inputTokens + breakdown.outputTokens + cacheTokens + breakdown.reasoningTokens;
@@ -19,7 +20,10 @@
 </script>
 
 <section class="token-mix">
-  <h3 class="section-label">Token 构成细分</h3>
+  <div class="section-header">
+    <h3 class="section-label">Token 构成细分</h3>
+    <span class="section-date">{dateLabel ? `今日 ${dateLabel}` : '今日'}</span>
+  </div>
 
   <div class="stacked-bar">
     {#each items as item}
@@ -51,6 +55,12 @@
     flex-direction: column;
     gap: var(--spacing-sm);
   }
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-xs);
+  }
   .section-label {
     margin: 0;
     font-size: 10px;
@@ -59,12 +69,17 @@
     letter-spacing: 0.06em;
     color: var(--muted);
   }
+  .section-date {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: var(--code-font);
+  }
   .stacked-bar {
     display: flex;
     height: 16px;
     border-radius: 8px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--track-bg, rgba(255, 255, 255, 0.04));
     box-shadow: inset 0 0 0 1px var(--surface-line);
   }
   .segment {

@@ -1,4 +1,4 @@
-import { MonitorConfig } from '../config';
+import type { MonitorConfig } from '../core/config';
 import { resolveModelPlaceholder } from '../modelAliases';
 import { SessionScanCandidate, RpcArtifactManifest } from '../types';
 import { RpcArtifactStore } from '../storage/rpcArtifactStore';

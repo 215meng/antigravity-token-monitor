@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { dashboardState } from './lib/dashboardStore';
+  import { dashboardError, dashboardState } from './lib/dashboardStore';
   import { deriveDashboardInsights } from './lib/deriveDashboardInsights';
+  import { vscodeApi } from './lib/vscodeApi';
   import HeaderBar from './components/HeaderBar.svelte';
   import KpiStrip from './components/KpiStrip.svelte';
   import SessionLeaderboard from './components/SessionLeaderboard.svelte';
@@ -20,8 +21,26 @@
     <HeaderBar state={insights} />
 
     <main class="main-content">
+      {#if $dashboardError}
+        <div class="error-banner" role="alert">
+          <span>{$dashboardError}</span>
+          <button class="retry-btn" on:click={() => vscodeApi.postMessage({ type: 'dashboard/ready' })}>重试</button>
+        </div>
+      {/if}
+
+      {#if !insights.hasSessions && (insights.syncStatus === 'running' || insights.exportStatus.status === 'running')}
+        <div class="sync-banner" role="status">
+          正在后台首次扫描本机历史会话，完成后将自动刷新图表与本月累计数据...
+        </div>
+      {/if}
+
       <section aria-label="Overview Hero" class="hero-region">
-        <KpiStrip summary={insights.summary} pricing={insights.pricing} />
+        <KpiStrip
+          summary={insights.summary}
+          pricing={insights.pricing}
+          monthlyUsage={insights.monthlyUsage}
+          todayUsage={insights.todayUsage}
+        />
       </section>
 
       <div class="dashboard-grid">
@@ -31,7 +50,7 @@
         </section>
 
         <aside aria-label="Operations Rail" class="operations-rail">
-          <TokenBreakdownPanel breakdown={insights.tokenBreakdown} />
+          <TokenBreakdownPanel breakdown={insights.todayUsage} dateLabel={insights.todayUsage.label} />
         </aside>
       </div>
 
@@ -46,6 +65,11 @@
         <SessionLeaderboard sessions={insights.sortedSessions} />
       </section>
     </main>
+  </div>
+{:else if $dashboardError}
+  <div class="loading error-state">
+    <p class="error-text">{$dashboardError}</p>
+    <button class="retry-btn" on:click={() => vscodeApi.postMessage({ type: 'dashboard/ready' })}>重试加载</button>
   </div>
 {:else}
   <div class="loading">正在等待监控面板数据...</div>
@@ -102,11 +126,47 @@
     text-align: center;
     color: var(--muted);
     display: flex;
+    flex-direction: column;
+    gap: 12px;
     align-items: center;
     justify-content: center;
     height: 100vh;
     font-size: 14px;
     letter-spacing: 0.02em;
+  }
+  .error-text {
+    margin: 0;
+    color: var(--danger);
+    max-width: 520px;
+    word-break: break-word;
+  }
+  .retry-btn {
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--bg-elevated);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .sync-banner {
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--bg-elevated);
+    color: var(--accent);
+    font-size: 13px;
+  }
+  .error-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--danger);
+    background: var(--bg-elevated);
+    color: var(--danger);
+    font-size: 13px;
   }
   @keyframes fade-in {
     from {

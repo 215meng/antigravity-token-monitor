@@ -95,7 +95,7 @@
   .model-name {
     font-weight: 600;
     color: var(--text);
-    font-family: var(--font-mono);
+    font-family: var(--code-font);
   }
   .model-stats {
     color: var(--muted);

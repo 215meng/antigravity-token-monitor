@@ -2,9 +2,9 @@ import { mkdtemp } from 'fs/promises';
 import * as fs from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
-import type * as vscode from 'vscode';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MonitorConfig } from '../config';
+import type { MonitorConfig } from '../core/config';
+import type { MonitorLogger } from '../core/types';
 import { AntigravitySessionParser } from '../parser/antigravitySessionParser';
 import { SnapshotStore } from '../storage/snapshotStore';
 import type { PersistedSessionState, SessionParsePlan, SessionScanCandidate, SessionScanResult, SessionTotals } from '../types';
@@ -324,7 +324,7 @@ function createService(options: {
     () => parser,
     new SessionUsageCalculator(),
     options.store,
-    createOutputChannel()
+    createLogger()
   );
 }
 
@@ -345,7 +345,7 @@ function buildConfig(sessionRoot: string): MonitorConfig {
 async function createStoreHarness(): Promise<{ store: SnapshotStore; storagePath: string }> {
   const storagePath = await mkdtemp(path.join(tmpdir(), 'antigravity-state-'));
   return {
-    store: new SnapshotStore(createExtensionContext(storagePath)),
+    store: new SnapshotStore(storagePath),
     storagePath
   };
 }
@@ -461,145 +461,8 @@ class StubParser extends AntigravitySessionParser {
   }
 }
 
-function createExtensionContext(globalStoragePath: string): vscode.ExtensionContext {
-  const uri = createUri(globalStoragePath);
-  const noopDisposable = { dispose() {} };
-  const noopEvent = <T,>(): vscode.Event<T> => (_listener) => noopDisposable;
-  const memento = createMemento();
-  const environmentVariableCollection = createEnvironmentVariableCollection();
-
+function createLogger(): MonitorLogger {
   return {
-    subscriptions: [],
-    workspaceState: memento,
-    globalState: {
-      ...memento,
-      setKeysForSync() {}
-    },
-    secrets: {
-      keys: async () => [],
-      get: async () => undefined,
-      store: async () => {},
-      delete: async () => {},
-      onDidChange: noopEvent()
-    },
-    extensionUri: uri,
-    extensionPath: globalStoragePath,
-    environmentVariableCollection,
-    asAbsolutePath: (relativePath: string) => path.join(globalStoragePath, relativePath),
-    storageUri: uri,
-    storagePath: globalStoragePath,
-    globalStorageUri: uri,
-    globalStoragePath,
-    logUri: uri,
-    logPath: globalStoragePath,
-    extensionMode: 3,
-    extension: {
-      id: 'test.antigravity-token-monitor',
-      extensionUri: uri,
-      extensionPath: globalStoragePath,
-      isActive: true,
-      packageJSON: {},
-      extensionKind: 2,
-      exports: undefined,
-      activate: async () => undefined
-    },
-    languageModelAccessInformation: {
-      onDidChange: noopEvent(),
-      canSendRequest: () => false
-    }
-  };
-}
-
-function createUri(fsPath: string): vscode.Uri {
-  return {
-    scheme: 'file',
-    authority: '',
-    path: fsPath,
-    query: '',
-    fragment: '',
-    fsPath,
-    with(change) {
-      return createUri(change.path ?? fsPath);
-    },
-    toString() {
-      return fsPath;
-    },
-    toJSON() {
-      return {
-        scheme: 'file',
-        authority: '',
-        path: fsPath,
-        query: '',
-        fragment: ''
-      };
-    }
-  } as vscode.Uri;
-}
-
-function createMemento(): vscode.Memento {
-  const values = new Map<string, unknown>();
-  return {
-    keys: () => Array.from(values.keys()),
-    get: <T>(key: string, defaultValue?: T) => (values.has(key) ? values.get(key) as T : defaultValue as T),
-    update: async (key: string, value: unknown) => {
-      if (value === undefined) {
-        values.delete(key);
-        return;
-      }
-
-      values.set(key, value);
-    }
-  };
-}
-
-function createEnvironmentVariableCollection(): vscode.GlobalEnvironmentVariableCollection {
-  const entries = new Map<string, vscode.EnvironmentVariableMutator>();
-  const collection: vscode.GlobalEnvironmentVariableCollection = {
-    persistent: true,
-    description: undefined,
-    replace(variable: string, value: string) {
-      entries.set(variable, { type: 1, value, options: { applyAtProcessCreation: true } });
-    },
-    append(variable: string, value: string) {
-      entries.set(variable, { type: 2, value, options: { applyAtProcessCreation: true } });
-    },
-    prepend(variable: string, value: string) {
-      entries.set(variable, { type: 3, value, options: { applyAtProcessCreation: true } });
-    },
-    get(variable: string) {
-      return entries.get(variable);
-    },
-    forEach(callback) {
-      for (const [variable, mutator] of entries) {
-        callback(variable, mutator, collection);
-      }
-    },
-    delete(variable: string) {
-      entries.delete(variable);
-    },
-    clear() {
-      entries.clear();
-    },
-    getScoped() {
-      return collection;
-    },
-    [Symbol.iterator]() {
-      return entries[Symbol.iterator]();
-    }
-  };
-
-  return collection;
-}
-
-function createOutputChannel(): vscode.OutputChannel {
-  return {
-    name: 'test-output',
-    append() {},
-    appendLine() {},
-    replace() {},
-    clear() {},
-    show() {},
-    hide() {},
-    dispose() {}
+    appendLine() {}
   };
 }

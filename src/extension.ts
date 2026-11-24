@@ -13,7 +13,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const outputChannel = vscode.window.createOutputChannel('Antigravity Token Monitor');
   const scanner = new SessionScanner();
   const calculator = new SessionUsageCalculator();
-  const store = new SnapshotStore(context);
+  const store = new SnapshotStore(context.globalStorageUri.fsPath);
   const service = new TokenMonitorService(
     () => readConfig(),
     scanner,

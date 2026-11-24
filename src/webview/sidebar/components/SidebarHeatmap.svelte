@@ -31,7 +31,7 @@
       <div
         class="cell"
         class:cell--empty={bin.totalTokens === 0}
-        style="background-color: {bin.totalTokens > 0 ? `rgba(42, 157, 244, ${getIntensity(bin.totalTokens)})` : 'rgba(255, 255, 255, 0.03)'}"
+        style="background-color: {bin.totalTokens > 0 ? `rgba(42, 157, 244, ${getIntensity(bin.totalTokens)})` : 'var(--surface-subtle, rgba(255, 255, 255, 0.03))'}"
         title="{formatDateLabel(bin.date)}: {formatCompact(bin.totalTokens)} tokens"
         on:mouseenter={() => hoveredBin = bin}
         on:mouseleave={() => hoveredBin = null}

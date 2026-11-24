@@ -2,7 +2,7 @@
   "name": "antigravity-token-monitor",
   "displayName": "Antigravity Token Monitor",
   "description": "实时监控 Antigravity 会话的 Token 使用量，支持精确去重、按日热力图、SQLite 原生读取及自动同步（基于 ddarkr/antigravity-token-monitor 二次开发）。",
-  "version": "0.0.23",
+  "version": "1.0.0",
   "publisher": "ddarkr",
   "author": {
     "name": "215meng",
@@ -133,6 +133,8 @@
   "scripts": {
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
+    "build:plugin": "node scripts/build-plugin.mjs",
+    "install:plugin": "node scripts/install-plugin.mjs",
     "package": "npm run compile && npx @vscode/vsce package --no-dependencies",
     "typecheck": "tsc --noEmit",
     "typecheck:webview": "svelte-check --tsconfig ./tsconfig.webview.json",
@@ -140,11 +142,11 @@
     "usage": "npx tsx scripts/run-token-scan.ts"
   },
   "devDependencies": {
-    "@vscode/vsce": "^3.7.1",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@testing-library/svelte": "^5.3.1",
     "@types/node": "^20.17.30",
     "@types/vscode": "^1.96.0",
+    "@vscode/vsce": "^3.7.1",
     "esbuild": "^0.25.0",
     "esbuild-svelte": "^0.9.4",
     "jsdom": "^28.1.0",
@@ -152,5 +154,10 @@
     "svelte-check": "^4.4.5",
     "typescript": "^5.8.2",
     "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^2.0.4",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
   }
 }

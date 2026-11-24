@@ -1,5 +1,7 @@
+import * as http from 'http';
 import * as https from 'https';
-import { MonitorConfig } from '../config';
+import type { MonitorConfig } from '../core/config';
+import { detectEnvConnection } from '../mcp/envLocator';
 import { ProcessLocator, RpcConnectionInfo } from './processLocator';
 
 type TrajectorySummary = {
@@ -121,9 +123,11 @@ export class AntigravityRpcClient {
   private async request(method: string, body: unknown, connection?: RpcConnectionInfo): Promise<any> {
     const resolvedConnection = connection ?? await this.ensureConnection();
     const requestBody = JSON.stringify(body);
+    const protocol = resolvedConnection.protocol ?? 'https';
+    const transport = protocol === 'http' ? http : https;
     return new Promise((resolve, reject) => {
-      const request = https.request({
-        hostname: '127.0.0.1',
+      const request = transport.request({
+        hostname: resolvedConnection.hostname ?? '127.0.0.1',
         port: resolvedConnection.port,
         path: `/exa.language_server_pb.LanguageServerService/${method}`,
         method: 'POST',
@@ -133,7 +137,7 @@ export class AntigravityRpcClient {
           'Connect-Protocol-Version': '1',
           'X-Codeium-Csrf-Token': resolvedConnection.csrfToken
         },
-        rejectUnauthorized: false,
+        ...(protocol === 'https' ? { rejectUnauthorized: false } : {}),
         timeout: this.config.rpcTimeoutMs
       }, (response) => {
         const chunks: Buffer[] = [];
@@ -175,6 +179,16 @@ export class AntigravityRpcClient {
 
   private async ensureConnections(): Promise<RpcConnectionInfo[]> {
     if (!this.connections) {
+      const envConnection = await detectEnvConnection(process.env, undefined, this.log);
+      if (envConnection) {
+        this.connections = [envConnection];
+        this.connectionInfo = envConnection;
+        this.log?.(
+          `AntigravityRpcClient: connected via env (${envConnection.protocol ?? 'https'}://${envConnection.hostname ?? '127.0.0.1'}:${envConnection.port}).`
+        );
+        return this.connections;
+      }
+
       this.connections = await this.locator.detectConnections();
       if (this.connections.length > 0) {
         this.connectionInfo = this.connections[0];

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ActivityHeatmapBin } from '../../types';
   import { formatNumber, formatCompact, formatUsd } from '../lib/formatters';
-  import { tick } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
 
   export let heatmap: ActivityHeatmapBin[];
 
@@ -11,8 +11,18 @@
   let hoveredBin: (ActivityHeatmapBin & { isEmpty?: boolean }) | null = null;
   let popoverX = 0;
   let popoverY = 0;
+  let popoverBelow = false;
   let popoverVisible = false;
   let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function hidePopoverNow() {
+    if (hideTimeout) {
+      clearTimeout(hideTimeout);
+      hideTimeout = null;
+    }
+    popoverVisible = false;
+    hoveredBin = null;
+  }
 
   function handleCellEnter(e: MouseEvent, bin: ActivityHeatmapBin & { isEmpty?: boolean }) {
     if (bin.isEmpty || bin.totalTokens === 0) {
@@ -25,10 +35,17 @@
     hoveredBin = bin;
 
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const rawCenterX = rect.left + rect.width / 2;
 
-    // Position popover relative to the viewport
-    popoverX = rect.left + rect.width / 2;
-    popoverY = rect.top;
+    popoverX = Math.max(130, Math.min(viewportWidth - 130, rawCenterX));
+    if (rect.top < 270) {
+      popoverBelow = true;
+      popoverY = rect.bottom + 10;
+    } else {
+      popoverBelow = false;
+      popoverY = rect.top - 10;
+    }
     popoverVisible = true;
   }
 
@@ -38,6 +55,17 @@
       hoveredBin = null;
     }, 150);
   }
+
+  onMount(() => {
+    window.addEventListener('scroll', hidePopoverNow, true);
+    window.addEventListener('resize', hidePopoverNow);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('scroll', hidePopoverNow, true);
+    window.removeEventListener('resize', hidePopoverNow);
+    hidePopoverNow();
+  });
 
   function formatDateLabel(dateStr: string): string {
     const [y, m, d] = dateStr.split('-').map(Number);
@@ -137,7 +165,7 @@
     <div class="card-meta">严格按每次模型调用真实发生日期分布的每日用量</div>
   </div>
 
-  <div class="heatmap-container" bind:this={containerRef}>
+  <div class="heatmap-container" bind:this={containerRef} on:scroll={hidePopoverNow}>
     <div class="calendar-container">
       <div class="months-header" style="grid-template-columns: repeat({columnsCount}, 12px);">
         {#each monthLabels as label}
@@ -172,60 +200,61 @@
         </div>
       </div>
     </div>
-
-    {#if popoverVisible && hoveredBin}
-      <div
-        role="tooltip"
-        class="heatmap-popover"
-        style="left: {popoverX}px; top: {popoverY}px;"
-        on:mouseenter={() => { if (hideTimeout) { clearTimeout(hideTimeout); hideTimeout = null; } }}
-        on:mouseleave={handleCellLeave}
-      >
-        <div class="popover-date">{formatDateLabel(hoveredBin.date)}</div>
-        <div class="popover-divider"></div>
-
-        <div class="popover-row popover-row--highlight">
-          <span class="popover-label">Token 吞吐量</span>
-          <span class="popover-value popover-value--accent">{formatCompact(hoveredBin.totalTokens)}</span>
-        </div>
-
-        <div class="popover-divider"></div>
-
-        <div class="popover-row">
-          <span class="popover-label">净输入 (Input)</span>
-          <span class="popover-value">{formatCompact(hoveredBin.inputTokens)}</span>
-        </div>
-        <div class="popover-row">
-          <span class="popover-label">净输出 (Output)</span>
-          <span class="popover-value">{formatCompact(hoveredBin.outputTokens)}</span>
-        </div>
-        <div class="popover-row">
-          <span class="popover-label">缓存命中读取 (Cache Read)</span>
-          <span class="popover-value">{formatCompact(hoveredBin.cacheReadTokens)}</span>
-        </div>
-        <div class="popover-row">
-          <span class="popover-label">缓存写入 (Cache Write)</span>
-          <span class="popover-value">{formatCompact(hoveredBin.cacheWriteTokens)}</span>
-        </div>
-        <div class="popover-row">
-          <span class="popover-label">深度思考 (Reasoning)</span>
-          <span class="popover-value">{formatCompact(hoveredBin.reasoningTokens)}</span>
-        </div>
-
-        <div class="popover-divider"></div>
-
-        <div class="popover-row">
-          <span class="popover-label">预估费用</span>
-          <span class="popover-value">{hoveredBin.costUsd > 0 ? formatUsd(hoveredBin.costUsd) : '—'}</span>
-        </div>
-        <div class="popover-row">
-          <span class="popover-label">交互消息数</span>
-          <span class="popover-value">{hoveredBin.messageCount}</span>
-        </div>
-      </div>
-    {/if}
   </div>
 </article>
+
+{#if popoverVisible && hoveredBin}
+  <div
+    role="tooltip"
+    class="heatmap-popover"
+    class:below={popoverBelow}
+    style="left: {popoverX}px; top: {popoverY}px;"
+    on:mouseenter={() => { if (hideTimeout) { clearTimeout(hideTimeout); hideTimeout = null; } }}
+    on:mouseleave={handleCellLeave}
+  >
+    <div class="popover-date">{formatDateLabel(hoveredBin.date)}</div>
+    <div class="popover-divider"></div>
+
+    <div class="popover-row popover-row--highlight">
+      <span class="popover-label">Token 吞吐量</span>
+      <span class="popover-value popover-value--accent">{formatCompact(hoveredBin.totalTokens)}</span>
+    </div>
+
+    <div class="popover-divider"></div>
+
+    <div class="popover-row">
+      <span class="popover-label">净输入 (Input)</span>
+      <span class="popover-value">{formatCompact(hoveredBin.inputTokens)}</span>
+    </div>
+    <div class="popover-row">
+      <span class="popover-label">净输出 (Output)</span>
+      <span class="popover-value">{formatCompact(hoveredBin.outputTokens)}</span>
+    </div>
+    <div class="popover-row">
+      <span class="popover-label">缓存命中读取 (Cache Read)</span>
+      <span class="popover-value">{formatCompact(hoveredBin.cacheReadTokens)}</span>
+    </div>
+    <div class="popover-row">
+      <span class="popover-label">缓存写入 (Cache Write)</span>
+      <span class="popover-value">{formatCompact(hoveredBin.cacheWriteTokens)}</span>
+    </div>
+    <div class="popover-row">
+      <span class="popover-label">深度思考 (Reasoning)</span>
+      <span class="popover-value">{formatCompact(hoveredBin.reasoningTokens)}</span>
+    </div>
+
+    <div class="popover-divider"></div>
+
+    <div class="popover-row">
+      <span class="popover-label">预估费用</span>
+      <span class="popover-value">{hoveredBin.costUsd > 0 ? formatUsd(hoveredBin.costUsd) : '—'}</span>
+    </div>
+    <div class="popover-row">
+      <span class="popover-label">交互消息数</span>
+      <span class="popover-value">{hoveredBin.messageCount}</span>
+    </div>
+  </div>
+{/if}
 
 <style>
   .analytical-card {
@@ -339,26 +368,29 @@
   /* Popover styles */
   .heatmap-popover {
     position: fixed;
-    z-index: 10000;
-    transform: translate(-50%, calc(-100% - 10px));
-    min-width: 220px;
-    background: var(--panel);
-    border: 1px solid var(--line);
+    z-index: 2147483647;
+    isolation: isolate;
+    transform: translate(-50%, -100%);
+    min-width: 240px;
+    background: var(--popover-bg, #151d20);
+    color: var(--text);
+    border: 1px solid var(--line-strong, var(--line));
     border-radius: 10px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35), 0 2px 10px rgba(0, 0, 0, 0.2);
     padding: 14px 16px;
     pointer-events: auto;
-    animation: popover-in 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: popover-in 0.14s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .heatmap-popover.below {
+    transform: translate(-50%, 0);
   }
 
   @keyframes popover-in {
     from {
       opacity: 0;
-      transform: translate(-50%, calc(-100% - 6px)) scale(0.96);
     }
     to {
       opacity: 1;
-      transform: translate(-50%, calc(-100% - 10px)) scale(1);
     }
   }
 

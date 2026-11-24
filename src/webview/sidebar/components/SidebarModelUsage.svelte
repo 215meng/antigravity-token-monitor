@@ -77,7 +77,7 @@
     font-size: 12px;
   }
   .model-name {
-    font-family: var(--font-mono);
+    font-family: var(--code-font);
     color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;

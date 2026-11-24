@@ -2,7 +2,7 @@ import { mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MonitorConfig } from '../config';
+import type { MonitorConfig } from '../core/config';
 import type { SessionScanCandidate } from '../types';
 import { RpcArtifactStore } from '../storage/rpcArtifactStore';
 import { AntigravityRpcClient } from './antigravityRpcClient';

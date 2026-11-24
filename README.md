@@ -7,7 +7,7 @@
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)](https://svelte.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> Real-time, deduplicated, and accurate Antigravity session token & cost monitoring right inside your VS Code dashboard, sidebar, and status bar.
+> Real-time, deduplicated, and accurate Antigravity session token & cost monitoring — **natively inside Antigravity** (left sidebar global dashboard, right auxiliary pane monthly/daily KPIs, and in-chat queries) as well as VS Code.
 
 > [!NOTE]
 > **Upstream Attribution**
@@ -54,33 +54,48 @@ Building on the upstream architecture, this edition resolves critical inaccuraci
 
 ---
 
-## Getting Started
+## Getting Started (Antigravity Native Plugin — Recommended)
 
 ### Prerequisites
 
-- [VS Code](https://code.visualstudio.com/) `≥ 1.96.0`
-- [Node.js](https://nodejs.org/) `≥ 22` (provides built-in `node:sqlite` for direct `.db` reading; older versions automatically fall back to RPC/filesystem parsing)
-- Antigravity running locally or existing saved sessions under `~/.gemini/antigravity`
+- [Antigravity](https://antigravity.google/) running locally or saved sessions under `~/.gemini/antigravity`
+- [Node.js](https://nodejs.org/) `≥ 22` (provides built-in `node:sqlite` for direct `.db` reading; Node 20+ automatically falls back to RPC/filesystem parsing)
 
-### Build & Install from Source
+### 3-Step Build & Install from Source
 
 ```bash
-# Clone the repository
+# 1. Clone and install dependencies
 git clone https://github.com/215meng/antigravity-token-monitor.git
 cd antigravity-token-monitor
-
-# Install dependencies
 npm install
 
-# Run type checks and unit tests
+# 2. Build the Antigravity MCP App plugin bundle (single-file HTML + stdio MCP server)
+npm run build:plugin
+
+# 3. Install into ~/.gemini/config/plugins/antigravity-token-monitor/
+npm run install:plugin
+```
+
+> [!TIP]
+> If you previously installed a standalone skill at `~/.gemini/config/skills/token-monitor/`, you can delete that old folder after installing the plugin to avoid duplicate skill triggers—the skill is now bundled directly inside the plugin.
+
+### Usage in Antigravity
+
+1. **Global Full-Page Dashboard**: Click **Token Monitor** in the Antigravity left sidebar for the complete KPI strip (including **This Month Cumulative** & **Today**), daily activity heatmap, model usage breakdown, LiteLLM cost estimate, and session leaderboard.
+2. **Auxiliary Side Pane**: Open **Token 用量** from the side pane `+` menu (or ask the agent to open the sidebar) for a persistent compact view highlighting **Monthly Cumulative** and **Today's Usage**.
+3. **In-Chat Queries**: Ask `"How many tokens did I use this month?"` or `"今天用了多少 token"`—the bundled `token-monitor` skill automatically invokes `get_token_usage_summary`.
+
+---
+
+## VS Code Extension (Maintenance Mode)
+
+The original VS Code extension shares the same core engine and Svelte 5 components. To build and install the `.vsix` package:
+
+```bash
+# Run type checks, unit tests, and package VSIX
 npm run typecheck
 npm run typecheck:webview
 npm run test:webview
-
-# Optional: verify live local token consumption in the terminal
-npm run usage
-
-# Compile and package the VSIX extension
 npm run package
 ```
 
@@ -92,26 +107,23 @@ On Windows, you can run the one-click installer script at the repository root:
 
 Alternatively, open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) in VS Code and run `Extensions: Install from VSIX...`, then select the generated `.vsix` file.
 
-### Usage
-
-1. Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
-2. Run `Antigravity Token 监控: 打开监控面板` (Open Dashboard).
-3. You can also click the token counter in the right side of the status bar, or click the Activity Bar graph icon for the sidebar mini-dashboard.
-
 ---
 
 ## Architecture
 
 ```
-Data Acquisition → Analysis → Orchestration → Presentation
+Core (Types/Config/Summary) → Storage → Data Acquisition → Analysis → Orchestration → Presentation (MCP App / VS Code)
 ```
 
-- `src/rpc/` — Process detection, localhost HTTPS RPC client, native SQLite `.db` reader, and incremental JSONL exporter
+- `src/core/` — Host-agnostic configuration, minimal logger/disposable interfaces, and unified period usage summaries (`today` / `month` / `all`)
+- `src/mcp/` — Antigravity MCP App stdio server (`SEP-1865` + `com.google.antigravity/ui`), env-var direct RPC locator, and tool handlers
+- `src/rpc/` — Process detection, localhost HTTP/HTTPS RPC client, native SQLite `.db` reader, and incremental JSONL exporter
 - `src/parser/` — Canonical token extraction and per-step daily model breakdown attribution
 - `src/monitor/` — Session scanning, cross-session `responseId` deduplication, reverted-branch fusion, polling orchestration, and file locks
 - `src/pricing/` — LiteLLM catalog fetching, alias matching, and per-model cost calculation
 - `src/storage/` — Local RPC artifact cache and monthly-sharded session state persistence
-- `src/statusBar/` & `src/webview/` — VS Code status bar item and Svelte 5 dashboard / Activity Bar sidebar UI
+- `src/statusBar/` & `src/webview/` — Svelte 5 dashboard/sidebar UI with dual-mode `HostBridge` & `ThemeBridge` (Antigravity MCP App + VS Code Webview)
+- `plugin-template/` — Desensitized Antigravity plugin manifest, `${PLUGIN_ROOT}`/`${PLUGIN_DATA}` MCP config, logo, and bundled skill
 
 ---
 

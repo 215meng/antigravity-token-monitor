@@ -1,16 +1,29 @@
 <script lang="ts">
   import type { DashboardState } from '../../types';
+  import { createEmptyPeriodUsage, type PeriodUsageSummary } from '../../core/usageSummary';
   import { formatNumber, formatUsd } from '../lib/formatters';
 
   export let summary: DashboardState['summary'];
   export let pricing: DashboardState['pricing'];
+  export let monthlyUsage: PeriodUsageSummary = createEmptyPeriodUsage();
+  export let todayUsage: PeriodUsageSummary = createEmptyPeriodUsage();
 </script>
 
 <section class="stat-band">
   <div class="stat-grid">
     <article class="stat-block primary">
+      <div class="stat-label">本月累计 ({monthlyUsage.label || 'This Month'})</div>
+      <div class="stat-value highlight">{formatNumber(monthlyUsage.totalTokens)}</div>
+      <div class="stat-context">
+        {monthlyUsage.costUsd > 0 ? formatUsd(monthlyUsage.costUsd) : '$0.00'} · {monthlyUsage.activeDays} 天活跃 · 今日 {formatNumber(todayUsage.totalTokens)}
+      </div>
+    </article>
+
+    <div class="stat-divider"></div>
+
+    <article class="stat-block">
       <div class="stat-label">Token 总消耗量 (Total Tokens)</div>
-      <div class="stat-value highlight">{formatNumber(summary.totalTokens)}</div>
+      <div class="stat-value">{formatNumber(summary.totalTokens)}</div>
       <div class="stat-context">全部已扫描会话的 Token 吞吐总量</div>
     </article>
 
@@ -61,23 +74,23 @@
     opacity: 0.5;
   }
   .stat-grid {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(210px, 1.35fr) repeat(4, minmax(130px, 1fr));
+    gap: var(--spacing-md);
     align-items: stretch;
-    justify-content: space-between;
     position: relative;
     z-index: 1;
   }
   .stat-block {
-    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
-    padding: 0 var(--spacing-xl);
+    padding: 0 var(--spacing-md);
     border-right: 1px solid var(--line);
   }
   .stat-block:first-child {
     padding-left: 0;
-    flex: 1.5;
   }
   .stat-block:last-child {
     padding-right: 0;
@@ -88,23 +101,24 @@
   }
   .stat-label {
     color: var(--muted);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     font-family: var(--font-display);
   }
   .stat-value {
-    font-size: 36px;
+    font-size: clamp(22px, 2.2vw, 32px);
     font-weight: 300;
-    line-height: 1;
+    line-height: 1.1;
     color: var(--text);
     font-variant-numeric: tabular-nums;
     font-family: var(--code-font);
     letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
   }
   .stat-block:not(:first-child) .stat-value {
-    font-size: 24px;
+    font-size: clamp(18px, 1.6vw, 24px);
   }
   .stat-value.highlight {
     color: var(--accent-strong);
@@ -116,18 +130,22 @@
     font-size: 11px;
     line-height: 1.4;
   }
-  @media (max-width: 1000px) {
+  @media (max-width: 1280px) {
     .stat-grid {
-      flex-wrap: wrap;
-      gap: var(--spacing-xl);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--spacing-lg);
     }
     .stat-block {
-      flex: 1 1 calc(50% - var(--spacing-md));
       padding: 0 !important;
       border-right: none;
     }
     .stat-block:first-child {
-      flex: 1 1 100%;
+      grid-column: 1 / -1;
+    }
+  }
+  @media (max-width: 640px) {
+    .stat-grid {
+      grid-template-columns: 1fr;
     }
   }
 </style>

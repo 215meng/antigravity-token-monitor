@@ -1,15 +1,41 @@
 <script lang="ts">
   import type { DashboardState } from '../../../types';
+  import { createEmptyPeriodUsage, type PeriodUsageSummary } from '../../../core/usageSummary';
   import { formatCompact, formatUsd } from '../../lib/formatters';
 
   export let summary: DashboardState['summary'];
   export let pricing: DashboardState['pricing'];
+  export let monthlyUsage: PeriodUsageSummary = createEmptyPeriodUsage();
+  export let todayUsage: PeriodUsageSummary = createEmptyPeriodUsage();
 </script>
 
 <section class="kpi-section">
   <div class="kpi-card primary">
-    <div class="kpi-value highlight">{formatCompact(summary.totalTokens)}</div>
-    <div class="kpi-label">Token 总消耗量</div>
+    <div class="kpi-top-row">
+      <span class="kpi-pill">本月累计 {monthlyUsage.label || ''}</span>
+      <span class="kpi-today">今日 {formatCompact(todayUsage.totalTokens)}</span>
+    </div>
+    <div class="kpi-value highlight">{formatCompact(monthlyUsage.totalTokens)}</div>
+    <div class="kpi-subline">
+      <span>{monthlyUsage.costUsd > 0 ? formatUsd(monthlyUsage.costUsd) : '$0.00'}</span>
+      <span>•</span>
+      <span>{monthlyUsage.activeDays} 天活跃</span>
+      {#if monthlyUsage.dailyAvgTokens > 0}
+        <span>•</span>
+        <span>日均 {formatCompact(monthlyUsage.dailyAvgTokens)}</span>
+      {/if}
+    </div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-value">{formatCompact(summary.totalTokens)}</div>
+      <div class="kpi-label">Token 总消耗量</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-value">{pricing.pricedModelCount > 0 ? formatUsd(pricing.totalCostUsd) : '—'}</div>
+      <div class="kpi-label">预估成本</div>
+    </div>
   </div>
 
   <div class="kpi-row">
@@ -20,10 +46,6 @@
     <div class="kpi-card">
       <div class="kpi-value">{summary.messageCount}</div>
       <div class="kpi-label">消息数</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-value">{pricing.pricedModelCount > 0 ? formatUsd(pricing.totalCostUsd) : '—'}</div>
-      <div class="kpi-label">预估成本</div>
     </div>
   </div>
 
@@ -94,6 +116,33 @@
   .kpi-row {
     display: flex;
     gap: var(--spacing-sm);
+  }
+  .kpi-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-xs);
+    margin-bottom: 4px;
+  }
+  .kpi-pill {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+  }
+  .kpi-today {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: var(--code-font);
+  }
+  .kpi-subline {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--muted);
   }
   .kpi-meta {
     font-size: 10px;

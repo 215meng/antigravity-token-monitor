@@ -3,6 +3,7 @@
   import { formatNumber } from '../lib/formatters';
 
   export let breakdown: TokenBreakdown;
+  export let dateLabel = '';
 
   $: cacheTokens = breakdown.cacheReadTokens + breakdown.cacheWriteTokens;
   $: categorizedTotal = breakdown.inputTokens + breakdown.outputTokens + cacheTokens + breakdown.reasoningTokens;
@@ -21,13 +22,13 @@
 <article class="analytical-card">
   <div class="card-header">
     <h2 class="section-title">Token 构成细分</h2>
-    <div class="card-meta">各维度占比</div>
+    <div class="card-meta">{dateLabel ? `今日 (${dateLabel}) 各维度占比` : '今日各维度占比'}</div>
   </div>
 
   <div class="card-body">
     <div class="total-display">
       <span class="total-number">{formatNumber(breakdown.totalTokens)}</span>
-      <span class="total-label">Token 总量</span>
+      <span class="total-label">今日 Token 总量</span>
     </div>
 
     <div class="coverage-copy">
@@ -126,7 +127,7 @@
     height: 32px;
     border-radius: 16px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--track-bg, rgba(255, 255, 255, 0.06));
     width: 100%;
     box-shadow: inset 0 0 0 1px var(--surface-line);
   }
@@ -152,7 +153,7 @@
     align-items: flex-start;
     gap: var(--spacing-sm);
     padding: var(--spacing-sm);
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--surface-subtle, rgba(255, 255, 255, 0.02));
     border-radius: 8px;
     border: 1px solid var(--surface-line);
   }

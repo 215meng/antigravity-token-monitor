@@ -51,7 +51,7 @@ export class DashboardPanel implements vscode.Disposable {
           return;
         }
 
-        if (message.type === 'dashboard/refresh') {
+        if (message.type === 'dashboard/refresh' || message.type === 'dashboard/autoRefresh') {
           this.onRefresh();
           return;
         }

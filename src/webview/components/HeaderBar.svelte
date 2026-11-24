@@ -10,6 +10,7 @@
   let animationFrameId: number;
   let firedAutoRefresh = false;
   let lastSeenPollAt: number | undefined;
+  let lastAutoRefreshAt = 0;
 
   function tick() {
     if (state.lastPollAt && state.config.pollIntervalMs && state.syncStatus === 'idle') {
@@ -25,10 +26,11 @@
       timeRemaining = Math.ceil(remaining / 1000);
       progress = 1 - (remaining / state.config.pollIntervalMs);
 
-      // Trigger auto-refresh when countdown reaches 0
-      if (remaining === 0 && !firedAutoRefresh) {
+      // Trigger auto-refresh when countdown reaches 0, respecting 30s minimum cooldown
+      if (remaining === 0 && !firedAutoRefresh && now - lastAutoRefreshAt >= 30_000) {
         firedAutoRefresh = true;
-        vscodeApi.postMessage({ type: 'dashboard/refresh' });
+        lastAutoRefreshAt = now;
+        vscodeApi.postMessage({ type: 'dashboard/autoRefresh' });
       }
     } else {
       timeRemaining = 0;
@@ -162,6 +164,10 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
     background: transparent;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .status-indicator {
     width: 6px;
