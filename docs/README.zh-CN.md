@@ -57,8 +57,8 @@
 ### 3 步源码构建与一键接入
 
 ```bash
-git clone https://github.com/215meng/antigravity-token-monitor.git
-cd antigravity-token-monitor
+git clone https://github.com/215meng/antigravity-tokenscope.git
+cd antigravity-tokenscope
 npm install && npm run build:plugin && npm run install:plugin
 ```
 

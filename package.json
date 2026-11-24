@@ -12,12 +12,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/215meng/antigravity-token-monitor"
+    "url": "https://github.com/215meng/antigravity-tokenscope"
   },
   "bugs": {
-    "url": "https://github.com/215meng/antigravity-token-monitor/issues"
+    "url": "https://github.com/215meng/antigravity-tokenscope/issues"
   },
-  "homepage": "https://github.com/215meng/antigravity-token-monitor#readme",
+  "homepage": "https://github.com/215meng/antigravity-tokenscope#readme",
   "engines": {
     "vscode": "^1.96.0"
   },

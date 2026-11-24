@@ -57,8 +57,8 @@ Ever wondered how many tokens your Antigravity agents actually consumed **today*
 ### Install in 3 Commands
 
 ```bash
-git clone https://github.com/215meng/antigravity-token-monitor.git
-cd antigravity-token-monitor
+git clone https://github.com/215meng/antigravity-tokenscope.git
+cd antigravity-tokenscope
 npm install && npm run build:plugin && npm run install:plugin
 ```
 
