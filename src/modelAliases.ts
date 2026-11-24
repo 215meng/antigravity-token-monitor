@@ -8,11 +8,14 @@ const PLACEHOLDER_MODEL_MAP: Record<string, string> = {
   'MODEL_PLACEHOLDER_M417': 'gemini-4-argon',
   'MODEL_PLACEHOLDER_M418': 'gemini-4-argon',
   'MODEL_PLACEHOLDER_M419': 'gemini-4-argon',
+  'MODEL_PLACEHOLDER_M437': 'gemini-4-carbon',
   'MODEL_PLACEHOLDER_M525': 'gemini-4-hydrogen',
   'MODEL_PLACEHOLDER_M526': 'gemini-4-hydrogen',
   'MODEL_PLACEHOLDER_M527': 'gemini-4-hydrogen',
   'MODEL_PLACEHOLDER_M528': 'gemini-4-hydrogen',
   'MODEL_PLACEHOLDER_M530': 'gemini-4-hydrogen',
+  'MODEL_PLACEHOLDER_M532': 'gemini-4-neon',
+  'MODEL_PLACEHOLDER_M533': 'gemini-4-neon',
   'MODEL_PLACEHOLDER_M537': 'orchestrator-neon',
   'MODEL_PLACEHOLDER_M668': 'orchestrator-argon',
   'MODEL_PLACEHOLDER_M669': 'gemini-4-hydrogen-orchestrator',
@@ -149,27 +152,13 @@ export function canonicalizeModelId(rawModel?: string): string {
   const normalized = (fromPlaceholder ?? trimmed).toLowerCase();
 
   // Gemini 4 Hydrogen (Orchestrator Worker) — 必须在通用 orchestrator 与 hydrogen 判断之前识别
-  if (/gemini.*4.*hydrogen.*orchestrator|gemini-flash-worker|m669/i.test(normalized)) {
+  if (/gemini.*4.*hydrogen.*orchestrator|orchestrator.*hydrogen|gemini-flash-worker|m669/i.test(normalized)) {
     return 'gemini-4-hydrogen-orchestrator';
   }
 
-  // Orchestrator (Neon)
-  if (/orchestrator.*neon|m537/i.test(normalized)) {
-    return 'orchestrator-neon';
-  }
-
-  // Orchestrator (Argon)
-  if (/orchestrator.*(argon|g1)|m668/i.test(normalized)) {
-    return 'orchestrator-argon';
-  }
-
-  // 动态兼容未来其他 Orchestrator 变体
-  const dynamicOrchestratorMatch = normalized.match(/orchestrator[\s(_-]+([a-z0-9]+)/i);
-  if (dynamicOrchestratorMatch?.[1]) {
-    return `orchestrator-${dynamicOrchestratorMatch[1].toLowerCase()}`;
-  }
-  if (/orchestrator/i.test(normalized)) {
-    return 'orchestrator-argon';
+  // Orchestrator 多模型选择器（支持 Neon / Carbon / Argon / Claude Opus 5.5 / Sonnet 5.5 等）
+  if (/orchestrator|m537|m668/i.test(normalized)) {
+    return canonicalizeOrchestratorModel(normalized);
   }
 
   // Gemini 4 Series
@@ -290,7 +279,12 @@ export function formatModelDisplayName(model?: string): string {
     'gemini-4-carbon': 'Gemini 4 Carbon',
     'gemini-4-hydrogen-orchestrator': 'Gemini 4 Hydrogen (Orchestrator)',
     'orchestrator-neon': 'Orchestrator (Neon)',
+    'orchestrator-carbon': 'Orchestrator (Carbon)',
     'orchestrator-argon': 'Orchestrator (Argon)',
+    'orchestrator-claude-opus-5-5': 'Orchestrator (Claude Opus 5.5)',
+    'orchestrator-claude-sonnet-5-5': 'Orchestrator (Claude Sonnet 5.5)',
+    'orchestrator-claude-opus-4-6-thinking': 'Orchestrator (Claude Opus 4.6)',
+    'orchestrator-claude-sonnet-4-6-thinking': 'Orchestrator (Claude Sonnet 4.6)',
     'claude-opus-5-5': 'Claude Opus 5.5',
     'claude-sonnet-5-5': 'Claude Sonnet 5.5',
     'gpt-oss-120b-medium': 'GPT-OSS 120B (Medium)',
@@ -331,6 +325,13 @@ export function formatModelDisplayName(model?: string): string {
     return `Orchestrator (${element.charAt(0).toUpperCase()}${element.slice(1)})`;
   }
 
+  if (canonical.startsWith('orchestrator-')) {
+    const subModel = canonical.slice('orchestrator-'.length);
+    if (subModel && !subModel.startsWith('orchestrator-')) {
+      return `Orchestrator (${formatModelDisplayName(subModel)})`;
+    }
+  }
+
   const gemini4Match = canonical.match(/^gemini-4-([a-z]+)$/i);
   if (gemini4Match?.[1]) {
     const element = gemini4Match[1];
@@ -338,4 +339,46 @@ export function formatModelDisplayName(model?: string): string {
   }
 
   return canonical;
+}
+
+function canonicalizeOrchestratorModel(normalized: string): string {
+  if (/claude.*opus.*(5\.5|5_5|5-5)|opus.*(5\.5|5_5|5-5)/i.test(normalized)) {
+    return 'orchestrator-claude-opus-5-5';
+  }
+
+  if (/claude.*sonnet.*(5\.5|5_5|5-5)|sonnet.*(5\.5|5_5|5-5)/i.test(normalized)) {
+    return 'orchestrator-claude-sonnet-5-5';
+  }
+
+  if (/claude.*opus.*(4\.6|4_6|4\.5|4_5)/i.test(normalized)) {
+    return 'orchestrator-claude-opus-4-6-thinking';
+  }
+
+  if (/claude.*sonnet.*(4\.6|4_6|4\.5|4_5)/i.test(normalized)) {
+    return 'orchestrator-claude-sonnet-4-6-thinking';
+  }
+
+  if (/\bcarbon\b/i.test(normalized)) {
+    return 'orchestrator-carbon';
+  }
+
+  if (/\bneon\b|m537/i.test(normalized)) {
+    return 'orchestrator-neon';
+  }
+
+  if (/\bargon\b|\bg1\b|g1-pro|m668/i.test(normalized)) {
+    return 'orchestrator-argon';
+  }
+
+  const gemini4InOrchestrator = normalized.match(/gemini[\s._-]*4[\s._-]+([a-z]+)/i);
+  if (gemini4InOrchestrator?.[1]) {
+    return `orchestrator-${gemini4InOrchestrator[1].toLowerCase()}`;
+  }
+
+  const dynamicOrchestratorMatch = normalized.match(/orchestrator[\s(_-]+(?!gemini\b|claude\b|pro\b|flash\b)([a-z0-9]+)/i);
+  if (dynamicOrchestratorMatch?.[1]) {
+    return `orchestrator-${dynamicOrchestratorMatch[1].toLowerCase()}`;
+  }
+
+  return 'orchestrator-argon';
 }

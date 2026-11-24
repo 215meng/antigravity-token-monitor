@@ -100,23 +100,52 @@ export const BASELINE_MODEL_PRICING: Record<string, LiteLlmModelPricing> = {
     input_cost_per_token_cache_hit: 0.0000001,
     output_cost_per_reasoning_token: 0.00001
   },
+  'orchestrator-carbon': {
+    input_cost_per_token: 0.000002,
+    prompt_cost_per_token: 0.000002,
+    output_cost_per_token: 0.00001,
+    completion_cost_per_token: 0.00001,
+    cache_read_input_token_cost: 0.0000001,
+    input_cost_per_token_cache_hit: 0.0000001,
+    output_cost_per_reasoning_token: 0.00001
+  },
 
   // Claude 5.5 Series
   'claude-opus-5-5': {
-    input_cost_per_token: 0.000005,
-    prompt_cost_per_token: 0.000005,
-    output_cost_per_token: 0.000025,
-    completion_cost_per_token: 0.000025,
-    cache_read_input_token_cost: 0.0000005,
-    input_cost_per_token_cache_hit: 0.0000005
+    input_cost_per_token: 0.000004,
+    prompt_cost_per_token: 0.000004,
+    output_cost_per_token: 0.00002,
+    completion_cost_per_token: 0.00002,
+    cache_read_input_token_cost: 0.0000002,
+    input_cost_per_token_cache_hit: 0.0000002,
+    cache_creation_input_token_cost: 0.000005
+  },
+  'orchestrator-claude-opus-5-5': {
+    input_cost_per_token: 0.000004,
+    prompt_cost_per_token: 0.000004,
+    output_cost_per_token: 0.00002,
+    completion_cost_per_token: 0.00002,
+    cache_read_input_token_cost: 0.0000002,
+    input_cost_per_token_cache_hit: 0.0000002,
+    cache_creation_input_token_cost: 0.000005
   },
   'claude-sonnet-5-5': {
-    input_cost_per_token: 0.000003,
-    prompt_cost_per_token: 0.000003,
-    output_cost_per_token: 0.000015,
-    completion_cost_per_token: 0.000015,
-    cache_read_input_token_cost: 0.0000003,
-    input_cost_per_token_cache_hit: 0.0000003
+    input_cost_per_token: 0.000002,
+    prompt_cost_per_token: 0.000002,
+    output_cost_per_token: 0.00001,
+    completion_cost_per_token: 0.00001,
+    cache_read_input_token_cost: 0.0000001,
+    input_cost_per_token_cache_hit: 0.0000001,
+    cache_creation_input_token_cost: 0.0000025
+  },
+  'orchestrator-claude-sonnet-5-5': {
+    input_cost_per_token: 0.000002,
+    prompt_cost_per_token: 0.000002,
+    output_cost_per_token: 0.00001,
+    completion_cost_per_token: 0.00001,
+    cache_read_input_token_cost: 0.0000001,
+    input_cost_per_token_cache_hit: 0.0000001,
+    cache_creation_input_token_cost: 0.0000025
   },
 
   // OpenAI GPT-OSS 120B
@@ -570,9 +599,18 @@ function buildModelAliases(model: string): string[] {
     aliases.add('gemini-4-hydrogen');
   }
 
-  const orchestratorMatch = bareBase.match(/^orchestrator-([a-z0-9]+)$/u);
+  const orchestratorMatch = bareBase.match(/^orchestrator-(.+)$/u);
   if (orchestratorMatch?.[1]) {
-    aliases.add(`gemini-4-${orchestratorMatch[1]}`);
+    const inner = orchestratorMatch[1];
+    if (/^(?:claude|gemini|gpt|deepseek)-|^o[13](?:-|$)/u.test(inner)) {
+      aliases.add(inner);
+      const strippedInner = inner.replace(/-(?:thinking|high|medium|low)$/u, '');
+      if (strippedInner && strippedInner !== inner) {
+        aliases.add(strippedInner);
+      }
+    } else if (/^[a-z0-9]+$/u.test(inner) && inner !== 'claude' && inner !== 'gemini' && inner !== 'gpt') {
+      aliases.add(`gemini-4-${inner}`);
+    }
   }
 
   // Prefer official Google provider prefixes when LiteLLM splits entries across multiple providers

@@ -37,7 +37,7 @@ Building on the upstream architecture, this edition resolves critical inaccuraci
   - Combines scheduled polling with debounced file watchers on `conversations/` and `brain/` so new sessions and updates sync automatically without manual intervention.
 - 🪟 **Windows Support & Modern Model Pricing**
   - Fixes Windows process/port detection and case-insensitive path matching.
-  - Supports placeholder resolution, alias canonicalization, and LiteLLM official pricing lookups for the Gemini 4 family (Neon, Argon, Hydrogen, Carbon), Orchestrator variants, Gemini 3.8 Flash, Claude Opus/Sonnet 5.5 & 4.6, GPT-OSS 120B, and more.
+  - Supports placeholder resolution, alias canonicalization, and LiteLLM official pricing lookups for the Gemini 4 family (Neon, Carbon, Argon, Hydrogen), multi-model Orchestrator (Neon / Carbon / Argon / Claude Opus 5.5), Gemini 3.8 Flash, Claude Opus/Sonnet 5.5 & 4.6, GPT-OSS 120B, and more.
 - 🌐 **Simplified Chinese UI**
   - Full Simplified Chinese localization across the webview dashboard, Activity Bar sidebar, status bar tooltips, and extension settings.
 

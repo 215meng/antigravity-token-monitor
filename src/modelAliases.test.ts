@@ -148,4 +148,28 @@ describe('modelAliases', () => {
     expect(formatModelDisplayName('Gemini 4 Helium (High)')).toBe('Gemini 4 Helium');
     expect(formatModelDisplayName('Orchestrator (Carbon)')).toBe('Orchestrator (Carbon)');
   });
+
+  it('resolves new Carbon/Neon placeholders and multi-model Orchestrator variants', () => {
+    expect(resolveModelPlaceholder('MODEL_PLACEHOLDER_M437')).toBe('gemini-4-carbon');
+    expect(resolveModelPlaceholder('1437')).toBe('gemini-4-carbon');
+    expect(resolveModelPlaceholder('MODEL_PLACEHOLDER_M532')).toBe('gemini-4-neon');
+    expect(resolveModelPlaceholder('1532')).toBe('gemini-4-neon');
+    expect(resolveModelPlaceholder('MODEL_PLACEHOLDER_M533')).toBe('gemini-4-neon');
+    expect(resolveModelPlaceholder('1533')).toBe('gemini-4-neon');
+
+    expect(canonicalizeModelId('Orchestrator (Gemini 4 Neon High)')).toBe('orchestrator-neon');
+    expect(canonicalizeModelId('Orchestrator Gemini 4 Carbon Medium')).toBe('orchestrator-carbon');
+    expect(canonicalizeModelId('gemini-4-carbon-orchestrator')).toBe('orchestrator-carbon');
+    expect(canonicalizeModelId('Orchestrator (Gemini 4 Argon Medium)')).toBe('orchestrator-argon');
+    expect(canonicalizeModelId('Orchestrator (Claude Opus 5.5 Medium)')).toBe('orchestrator-claude-opus-5-5');
+    expect(canonicalizeModelId('claude-opus-5-5-orchestrator')).toBe('orchestrator-claude-opus-5-5');
+    expect(canonicalizeModelId('Orchestrator (Claude Sonnet 5.5)')).toBe('orchestrator-claude-sonnet-5-5');
+    expect(canonicalizeModelId('Orchestrator (Gemini 4 Hydrogen)')).toBe('gemini-4-hydrogen-orchestrator');
+    expect(canonicalizeModelId('Orchestrator (Gemini 4 Helium High)')).toBe('orchestrator-helium');
+
+    expect(formatModelDisplayName('Orchestrator (Gemini 4 Carbon Medium)')).toBe('Orchestrator (Carbon)');
+    expect(formatModelDisplayName('Orchestrator (Claude Opus 5.5 Medium)')).toBe('Orchestrator (Claude Opus 5.5)');
+    expect(formatModelDisplayName('Orchestrator (Claude Sonnet 5.5)')).toBe('Orchestrator (Claude Sonnet 5.5)');
+    expect(formatModelDisplayName('Orchestrator (Gemini 4 Helium High)')).toBe('Orchestrator (Helium)');
+  });
 });

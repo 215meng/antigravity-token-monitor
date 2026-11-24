@@ -279,4 +279,27 @@ describe('litellmPricing', () => {
     expect(catalog.resolveModelPricing('orchestrator-argon')?.input_cost_per_token).toBe(0.0000021);
     expect(catalog.resolveModelPricing('orchestrator-neon')?.input_cost_per_token).toBe(0.0000032);
   });
+
+  it('resolves baseline and remote pricing for Gemini 4 Carbon and multi-model Orchestrator choices', async () => {
+    const baselineCatalog = new LiteLlmPricingCatalog();
+    expect(baselineCatalog.resolveModelPricing('orchestrator-carbon')?.input_cost_per_token).toBe(0.000002);
+    expect(baselineCatalog.resolveModelPricing('claude-opus-5-5')?.input_cost_per_token).toBe(0.000004);
+    expect(baselineCatalog.resolveModelPricing('orchestrator-claude-opus-5-5')?.input_cost_per_token).toBe(0.000004);
+    expect(baselineCatalog.resolveModelPricing('claude-sonnet-5-5')?.input_cost_per_token).toBe(0.000002);
+    expect(baselineCatalog.resolveModelPricing('orchestrator-claude-sonnet-5-5')?.input_cost_per_token).toBe(0.000002);
+
+    const remoteCatalog = new LiteLlmPricingCatalog(async () => new Response(JSON.stringify({
+      'gemini/gemini-4-carbon': { input_cost_per_token: 0.0000022, output_cost_per_token: 0.000011 },
+      'vertex_ai/gemini-4-carbon': { input_cost_per_token: 0.0000022, output_cost_per_token: 0.000011 },
+      'claude-opus-5-5': { input_cost_per_token: 0.0000045, output_cost_per_token: 0.0000225 },
+      'claude-sonnet-5-5': { input_cost_per_token: 0.0000023, output_cost_per_token: 0.0000115 }
+    }), { status: 200 }), 'https://example.test/pricing.json');
+
+    await remoteCatalog.getSnapshot();
+
+    expect(remoteCatalog.resolveModelPricing('gemini-4-carbon')?.input_cost_per_token).toBe(0.0000022);
+    expect(remoteCatalog.resolveModelPricing('orchestrator-carbon')?.input_cost_per_token).toBe(0.0000022);
+    expect(remoteCatalog.resolveModelPricing('orchestrator-claude-opus-5-5')?.input_cost_per_token).toBe(0.0000045);
+    expect(remoteCatalog.resolveModelPricing('orchestrator-claude-sonnet-5-5')?.input_cost_per_token).toBe(0.0000023);
+  });
 });

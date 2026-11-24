@@ -37,7 +37,7 @@
   - 通过定时增量刷新 + `conversations/`、`brain/` 目录文件监听（防抖自动导出与重算），无需手动干预即可自动同步最新真实用量。
 - 🪟 **Windows 深度适配与新模型支持**
   - 修复 Windows 下的进程/端口探测与大小写路径包含判定；
-  - 支持最新模型家族解析、官方前缀匹配与定价映射（Gemini 4 Neon / Argon / Hydrogen / Carbon、Orchestrator (Neon / Argon)、Gemini 3.8 Flash 全档位、Claude Opus/Sonnet 5.5 & 4.6、GPT-OSS 120B 等）。
+  - 支持最新模型家族解析、官方前缀匹配与定价映射（Gemini 4 Neon / Carbon / Argon / Hydrogen、多模型 Orchestrator (Neon / Carbon / Argon / Claude Opus 5.5)、Gemini 3.8 Flash 全档位、Claude Opus/Sonnet 5.5 & 4.6、GPT-OSS 120B 等）。
 - 🇨🇳 **完整简体中文汉化**
   - 看板、侧边栏、状态栏、热力图悬浮提示与配置说明全面简体中文化。
 
