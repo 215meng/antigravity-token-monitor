@@ -36,7 +36,7 @@ export async function initMcpAppRuntime(view: McpAppViewKind): Promise<App> {
     view === 'dashboard' ? 'open_token_dashboard' : 'open_token_sidebar';
 
   const app = new App(
-    { name: 'Antigravity Token Monitor', version: '1.0.0' },
+    { name: 'Antigravity TokenScope', version: '1.1.0' },
     {}
   );
 

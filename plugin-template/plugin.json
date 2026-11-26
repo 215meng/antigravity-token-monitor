@@ -1,7 +1,7 @@
 {
   "name": "antigravity-token-monitor",
   "displayName": "Antigravity TokenScope",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Native token & cost observability inside Antigravity — exact deduplicated accounting, monthly/daily KPIs, per-day activity heatmap, and real-time global & aux-pane dashboards.",
   "logo": "assets/logo.svg",
   "suggestedPrompts": [

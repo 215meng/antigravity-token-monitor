@@ -122,7 +122,7 @@ export async function startMcpServer(): Promise<void> {
   const server = new Server(
     {
       name: 'antigravity-token-monitor',
-      version: '1.0.0'
+      version: '1.1.0'
     },
     {
       capabilities: {

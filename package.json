@@ -2,7 +2,7 @@
   "name": "antigravity-token-monitor",
   "displayName": "Antigravity TokenScope",
   "description": "Antigravity TokenScope — 原生运行在 Antigravity 内的 Token 与成本可观测性插件，支持精准去重核算、本月/今日首屏看板、按日热力图及 SQLite 直读（基于 ddarkr/antigravity-token-monitor 深度重构）。",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "ddarkr",
   "author": {
     "name": "215meng",
