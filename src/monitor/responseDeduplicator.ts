@@ -8,11 +8,29 @@ import {
   normalizeTotal
 } from '../parser/antigravitySessionParser';
 import {
+  clearDedupIndex,
+  collectSessionSignatures,
+  loadDedupIndex,
+  saveDedupIndex,
+  type DedupedSessionSnapshot,
+  type DedupIndexFile,
+  type DedupRequestClaim,
+  type DedupSessionIndexEntry
+} from './dedupIndex';
+import {
   DailyTokenBreakdown,
   ModelTokenBreakdown,
   PersistedSessionState,
   TokenBreakdown
 } from '../types';
+
+export type IncrementalDedupResult = {
+  sessions: Record<string, PersistedSessionState>;
+  dirtyCount: number;
+  recomputedCount: number;
+  totalSessions: number;
+  usedIndex: boolean;
+};
 
 type ParsedRequestRecord = {
   requestId?: string;
@@ -89,89 +107,380 @@ export async function deduplicateSessionsFromArtifacts(
 
   for (const [sessionId, persisted] of sessionEntries) {
     const records = parsedBySession.get(sessionId);
-    const transcriptData = await readTranscriptData(sessionRoot, sessionId);
-
-    if (!records && !transcriptData) {
+    const snapshot = await computeSessionSnapshotFromDisk(
+      sessionId,
+      persisted,
+      sessionRoot,
+      records,
+      ownerByRequestId
+    );
+    if (!snapshot) {
       continue;
     }
 
-    const stepTimestamps = await loadSessionStepTimestamps(sessionRoot, sessionId, transcriptData?.stepTimestamps);
-    const totals = emptyBreakdown();
-    const modelBreakdowns: Record<string, ModelTokenBreakdown> = {};
-    const modelTotals: Record<string, number> = {};
-    const dailyBreakdowns: Record<string, DailyTokenBreakdown> = {};
-    const seenLocalIds = new Set<string>();
-    const modelUsageCounts = new Map<string, number>();
-    let evidenceCount = 0;
-    const tRecords = transcriptData?.calls ?? [];
-
-    if (records) {
-      for (const record of records) {
-        if (record.requestId) {
-          const owner = ownerByRequestId.get(record.requestId);
-          if (owner && owner.sessionId !== sessionId) {
-            continue;
-          }
-          if (seenLocalIds.has(record.requestId)) {
-            continue;
-          }
-          seenLocalIds.add(record.requestId);
-        }
-
-        const matchedTranscript = matchTranscriptCall(tRecords, record);
-        const callTimestamp = resolveCallTimestamp(record, stepTimestamps, matchedTranscript?.timestamp, persisted.latest.lastModifiedMs);
-        const canonicalModel = canonicalizeModelId(record.model);
-
-        mergeInto(totals, record.breakdown);
-        addModelBreakdown(modelBreakdowns, modelTotals, canonicalModel, record.breakdown);
-        addDailyBreakdown(dailyBreakdowns, callTimestamp, record.breakdown, canonicalModel);
-        if (canonicalModel !== 'unknown') {
-          modelUsageCounts.set(canonicalModel, (modelUsageCounts.get(canonicalModel) ?? 0) + record.breakdown.totalTokens);
-        }
-        evidenceCount += 1;
-      }
-    }
-
-    const fallbackModel = resolveDominantModel(modelUsageCounts, persisted.latest.modelTotals);
-    for (const tr of tRecords) {
-      if (tr.matched || tr.totalTokens <= 0) {
-        continue;
-      }
-      const revertedBreakdown: TokenBreakdown = {
-        inputTokens: tr.inputTokens,
-        outputTokens: tr.outputTokens,
-        cacheReadTokens: tr.cacheReadTokens,
-        cacheWriteTokens: tr.cacheWriteTokens,
-        reasoningTokens: 0,
-        totalTokens: tr.totalTokens
-      };
-      mergeInto(totals, revertedBreakdown);
-      addModelBreakdown(modelBreakdowns, modelTotals, fallbackModel, revertedBreakdown);
-      addDailyBreakdown(dailyBreakdowns, tr.timestamp || persisted.latest.lastModifiedMs, revertedBreakdown, fallbackModel);
-      evidenceCount += 1;
-    }
-
-    if (!records && evidenceCount === 0) {
-      continue;
-    }
-
-    totals.totalTokens = normalizeTotal(totals);
-
-    nextSessions[sessionId] = {
-      ...persisted,
-      latest: {
-        ...persisted.latest,
-        ...totals,
-        mode: evidenceCount > 0 ? 'reported' : (records ? 'reported' : persisted.latest.mode),
-        evidenceCount,
-        modelTotals,
-        modelBreakdowns,
-        dailyBreakdowns
-      }
-    };
+    nextSessions[sessionId] = applyDedupedSnapshot(persisted, snapshot);
   }
 
   return nextSessions;
+}
+
+/**
+ * Incremental cross-session deduplication backed by `.token-monitor/dedup-index.v1.json`.
+ * Only re-reads and recomputes dirty sessions plus any sibling sessions whose requestId
+ * ownership changed; produces outputs strictly equivalent to `deduplicateSessionsFromArtifacts`.
+ */
+export async function deduplicateSessionsIncremental(
+  sessions: Record<string, PersistedSessionState>,
+  sessionRoot: string
+): Promise<IncrementalDedupResult> {
+  const sessionEntries = Object.entries(sessions);
+  if (sessionEntries.length === 0) {
+    await clearDedupIndex(sessionRoot);
+    return {
+      sessions,
+      dirtyCount: 0,
+      recomputedCount: 0,
+      totalSessions: 0,
+      usedIndex: false
+    };
+  }
+
+  const [existingIndex, currentSignatures] = await Promise.all([
+    loadDedupIndex(sessionRoot),
+    collectSessionSignatures(sessionRoot, sessions)
+  ]);
+
+  const changedSessionIds = new Set<string>();
+  for (const [sessionId] of sessionEntries) {
+    const sigInfo = currentSignatures.get(sessionId);
+    const entry = existingIndex?.sessions[sessionId];
+    if (
+      !entry
+      || !sigInfo
+      || entry.signature !== sigInfo.signature
+      || entry.hasUsageFile !== sigInfo.hasUsageFile
+      || entry.snapshot === undefined
+      || !Array.isArray(entry.requestClaims)
+    ) {
+      changedSessionIds.add(sessionId);
+    }
+  }
+
+  const removedSessionIds = new Set<string>();
+  if (existingIndex) {
+    for (const prevSessionId of Object.keys(existingIndex.sessions)) {
+      if (!Object.prototype.hasOwnProperty.call(sessions, prevSessionId)) {
+        removedSessionIds.add(prevSessionId);
+      }
+    }
+  }
+
+  // Zero-change fast path: 0 usage/transcript/sqlite reads
+  if (existingIndex && changedSessionIds.size === 0 && removedSessionIds.size === 0) {
+    const nextSessions: Record<string, PersistedSessionState> = { ...sessions };
+    for (const [sessionId, persisted] of sessionEntries) {
+      const snapshot = existingIndex.sessions[sessionId]?.snapshot;
+      if (snapshot) {
+        nextSessions[sessionId] = applyDedupedSnapshot(persisted, snapshot);
+      }
+    }
+    return {
+      sessions: nextSessions,
+      dirtyCount: 0,
+      recomputedCount: 0,
+      totalSessions: sessionEntries.length,
+      usedIndex: true
+    };
+  }
+
+  const parsedBySession = new Map<string, ParsedRequestRecord[]>();
+  const claimsBySession = new Map<string, DedupRequestClaim[]>();
+
+  for (const [sessionId] of sessionEntries) {
+    const sigInfo = currentSignatures.get(sessionId);
+    if (!changedSessionIds.has(sessionId)) {
+      const cachedClaims = existingIndex?.sessions[sessionId]?.requestClaims ?? [];
+      claimsBySession.set(sessionId, cachedClaims);
+      continue;
+    }
+
+    if (sigInfo?.hasUsageFile) {
+      const usagePath = path.join(sessionRoot, '.token-monitor', 'rpc-cache', 'v1', sessionId, 'usage.jsonl');
+      const records = await readSessionUsageRecords(usagePath);
+      if (records) {
+        parsedBySession.set(sessionId, records);
+        claimsBySession.set(sessionId, extractRequestClaims(sessionId, records));
+        continue;
+      }
+    }
+    claimsBySession.set(sessionId, []);
+  }
+
+  const previousOwnerByRequestId = new Map<string, RequestOwner>();
+  if (existingIndex) {
+    for (const [prevSessionId, entry] of Object.entries(existingIndex.sessions)) {
+      if (!Array.isArray(entry.requestClaims)) {
+        continue;
+      }
+      registerClaimsOwnership(previousOwnerByRequestId, prevSessionId, entry.lastModifiedMs || 0, entry.requestClaims);
+    }
+  }
+
+  const ownerByRequestId = new Map<string, RequestOwner>();
+  for (const [sessionId, persisted] of sessionEntries) {
+    const claims = claimsBySession.get(sessionId) ?? [];
+    registerClaimsOwnership(ownerByRequestId, sessionId, persisted.latest.lastModifiedMs || 0, claims);
+  }
+
+  const recomputeSessionIds = new Set<string>(changedSessionIds);
+  if (existingIndex) {
+    for (const [requestId, prevOwner] of previousOwnerByRequestId.entries()) {
+      const nextOwner = ownerByRequestId.get(requestId);
+      if (prevOwner.sessionId !== nextOwner?.sessionId) {
+        if (Object.prototype.hasOwnProperty.call(sessions, prevOwner.sessionId)) {
+          recomputeSessionIds.add(prevOwner.sessionId);
+        }
+        if (nextOwner && Object.prototype.hasOwnProperty.call(sessions, nextOwner.sessionId)) {
+          recomputeSessionIds.add(nextOwner.sessionId);
+        }
+      }
+    }
+    for (const [requestId, nextOwner] of ownerByRequestId.entries()) {
+      if (!previousOwnerByRequestId.has(requestId) && Object.prototype.hasOwnProperty.call(sessions, nextOwner.sessionId)) {
+        recomputeSessionIds.add(nextOwner.sessionId);
+      }
+    }
+  }
+
+  // Ensure affected sibling sessions that were not originally dirty also load their usage.jsonl
+  for (const sessionId of recomputeSessionIds) {
+    if (!changedSessionIds.has(sessionId) && !parsedBySession.has(sessionId)) {
+      const sigInfo = currentSignatures.get(sessionId);
+      if (sigInfo?.hasUsageFile) {
+        const usagePath = path.join(sessionRoot, '.token-monitor', 'rpc-cache', 'v1', sessionId, 'usage.jsonl');
+        const records = await readSessionUsageRecords(usagePath);
+        if (records) {
+          parsedBySession.set(sessionId, records);
+        }
+      }
+    }
+  }
+
+  const nextSessions: Record<string, PersistedSessionState> = { ...sessions };
+  const nextIndexSessions: Record<string, DedupSessionIndexEntry> = {};
+
+  for (const [sessionId, persisted] of sessionEntries) {
+    const sigInfo = currentSignatures.get(sessionId)!;
+    const claims = claimsBySession.get(sessionId) ?? [];
+
+    if (!recomputeSessionIds.has(sessionId) && existingIndex?.sessions[sessionId]) {
+      const cachedEntry = existingIndex.sessions[sessionId];
+      nextIndexSessions[sessionId] = cachedEntry;
+      if (cachedEntry.snapshot) {
+        nextSessions[sessionId] = applyDedupedSnapshot(persisted, cachedEntry.snapshot);
+      }
+      continue;
+    }
+
+    const records = parsedBySession.get(sessionId);
+    const snapshot = await computeSessionSnapshotFromDisk(
+      sessionId,
+      persisted,
+      sessionRoot,
+      records,
+      ownerByRequestId
+    );
+
+    nextIndexSessions[sessionId] = {
+      signature: sigInfo.signature,
+      lastModifiedMs: persisted.latest.lastModifiedMs || 0,
+      hasUsageFile: sigInfo.hasUsageFile,
+      requestClaims: claims,
+      snapshot
+    };
+
+    if (snapshot) {
+      nextSessions[sessionId] = applyDedupedSnapshot(persisted, snapshot);
+    }
+  }
+
+  const nextIndex: DedupIndexFile = {
+    schemaVersion: 1,
+    updatedAt: Date.now(),
+    sessions: nextIndexSessions
+  };
+  await saveDedupIndex(sessionRoot, nextIndex);
+
+  return {
+    sessions: nextSessions,
+    dirtyCount: changedSessionIds.size + removedSessionIds.size,
+    recomputedCount: recomputeSessionIds.size,
+    totalSessions: sessionEntries.length,
+    usedIndex: Boolean(existingIndex)
+  };
+}
+
+function applyDedupedSnapshot(
+  persisted: PersistedSessionState,
+  snapshot: DedupedSessionSnapshot
+): PersistedSessionState {
+  return {
+    ...persisted,
+    latest: {
+      ...persisted.latest,
+      inputTokens: snapshot.inputTokens,
+      outputTokens: snapshot.outputTokens,
+      cacheReadTokens: snapshot.cacheReadTokens,
+      cacheWriteTokens: snapshot.cacheWriteTokens,
+      reasoningTokens: snapshot.reasoningTokens,
+      totalTokens: snapshot.totalTokens,
+      mode: snapshot.mode,
+      evidenceCount: snapshot.evidenceCount,
+      modelTotals: snapshot.modelTotals,
+      modelBreakdowns: snapshot.modelBreakdowns,
+      dailyBreakdowns: snapshot.dailyBreakdowns
+    }
+  };
+}
+
+function extractRequestClaims(sessionId: string, records: ParsedRequestRecord[]): DedupRequestClaim[] {
+  const claimMap = new Map<string, boolean>();
+  for (const record of records) {
+    if (!record.requestId) {
+      continue;
+    }
+    const isNative = Boolean(record.nativeCascadeId && record.nativeCascadeId === sessionId);
+    const prev = claimMap.get(record.requestId);
+    if (prev === undefined || (isNative && !prev)) {
+      claimMap.set(record.requestId, isNative);
+    }
+  }
+  const claims: DedupRequestClaim[] = [];
+  for (const [requestId, isNative] of claimMap.entries()) {
+    claims.push({ requestId, isNative });
+  }
+  return claims;
+}
+
+function registerClaimsOwnership(
+  ownerByRequestId: Map<string, RequestOwner>,
+  sessionId: string,
+  sessionMtime: number,
+  claims: DedupRequestClaim[]
+): void {
+  for (const claim of claims) {
+    const currentOwner = ownerByRequestId.get(claim.requestId);
+    if (!currentOwner || shouldTransferOwnership(currentOwner, sessionId, claim.isNative, sessionMtime)) {
+      ownerByRequestId.set(claim.requestId, {
+        sessionId,
+        isNative: claim.isNative,
+        lastModifiedMs: sessionMtime
+      });
+    }
+  }
+}
+
+async function computeSessionSnapshotFromDisk(
+  sessionId: string,
+  persisted: PersistedSessionState,
+  sessionRoot: string,
+  records: ParsedRequestRecord[] | undefined,
+  ownerByRequestId: Map<string, RequestOwner>
+): Promise<DedupedSessionSnapshot | null> {
+  const transcriptData = await readTranscriptData(sessionRoot, sessionId);
+
+  if (!records && !transcriptData) {
+    return null;
+  }
+
+  const stepTimestamps = await loadSessionStepTimestamps(sessionRoot, sessionId, transcriptData?.stepTimestamps);
+  return aggregateSingleSession(
+    sessionId,
+    persisted,
+    records,
+    transcriptData,
+    stepTimestamps,
+    ownerByRequestId
+  );
+}
+
+function aggregateSingleSession(
+  sessionId: string,
+  persisted: PersistedSessionState,
+  records: ParsedRequestRecord[] | undefined,
+  transcriptData: { calls: TranscriptCallRecord[]; stepTimestamps: Map<number, number> } | null,
+  stepTimestamps: Map<number, number>,
+  ownerByRequestId: Map<string, RequestOwner>
+): DedupedSessionSnapshot | null {
+  const totals = emptyBreakdown();
+  const modelBreakdowns: Record<string, ModelTokenBreakdown> = {};
+  const modelTotals: Record<string, number> = {};
+  const dailyBreakdowns: Record<string, DailyTokenBreakdown> = {};
+  const seenLocalIds = new Set<string>();
+  const modelUsageCounts = new Map<string, number>();
+  let evidenceCount = 0;
+  const tRecords = transcriptData?.calls ?? [];
+
+  if (records) {
+    for (const record of records) {
+      if (record.requestId) {
+        const owner = ownerByRequestId.get(record.requestId);
+        if (owner && owner.sessionId !== sessionId) {
+          continue;
+        }
+        if (seenLocalIds.has(record.requestId)) {
+          continue;
+        }
+        seenLocalIds.add(record.requestId);
+      }
+
+      const matchedTranscript = matchTranscriptCall(tRecords, record);
+      const callTimestamp = resolveCallTimestamp(record, stepTimestamps, matchedTranscript?.timestamp, persisted.latest.lastModifiedMs);
+      const canonicalModel = canonicalizeModelId(record.model);
+
+      mergeInto(totals, record.breakdown);
+      addModelBreakdown(modelBreakdowns, modelTotals, canonicalModel, record.breakdown);
+      addDailyBreakdown(dailyBreakdowns, callTimestamp, record.breakdown, canonicalModel);
+      if (canonicalModel !== 'unknown') {
+        modelUsageCounts.set(canonicalModel, (modelUsageCounts.get(canonicalModel) ?? 0) + record.breakdown.totalTokens);
+      }
+      evidenceCount += 1;
+    }
+  }
+
+  const fallbackModel = resolveDominantModel(modelUsageCounts, persisted.latest.modelTotals);
+  for (const tr of tRecords) {
+    if (tr.matched || tr.totalTokens <= 0) {
+      continue;
+    }
+    const revertedBreakdown: TokenBreakdown = {
+      inputTokens: tr.inputTokens,
+      outputTokens: tr.outputTokens,
+      cacheReadTokens: tr.cacheReadTokens,
+      cacheWriteTokens: tr.cacheWriteTokens,
+      reasoningTokens: 0,
+      totalTokens: tr.totalTokens
+    };
+    mergeInto(totals, revertedBreakdown);
+    addModelBreakdown(modelBreakdowns, modelTotals, fallbackModel, revertedBreakdown);
+    addDailyBreakdown(dailyBreakdowns, tr.timestamp || persisted.latest.lastModifiedMs, revertedBreakdown, fallbackModel);
+    evidenceCount += 1;
+  }
+
+  if (!records && evidenceCount === 0) {
+    return null;
+  }
+
+  totals.totalTokens = normalizeTotal(totals);
+
+  return {
+    ...totals,
+    mode: evidenceCount > 0 ? 'reported' : (records ? 'reported' : persisted.latest.mode),
+    evidenceCount,
+    modelTotals,
+    modelBreakdowns,
+    dailyBreakdowns
+  };
 }
 
 function shouldTransferOwnership(

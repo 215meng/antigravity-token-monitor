@@ -1,33 +1,34 @@
 <script lang="ts">
   import type { DashboardState } from '../../types';
   import { formatExportStatus, formatDate, formatNumber } from '../lib/formatters';
+  import { i18n } from '../lib/i18n';
 
   export let state: DashboardState;
 </script>
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">系统与导出状态</h2>
-    <div class="card-meta">后台数据管道</div>
+    <h2 class="section-title">{$i18n.systemStatusTitle}</h2>
+    <div class="card-meta">{$i18n.systemStatusSubtitle}</div>
   </div>
 
   <div class="card-body">
     <div class="status-card">
       <div class="status-header">
         <div class="status-icon {state.exportStatus.status}"></div>
-        <div class="status-name">数据导出状态</div>
+        <div class="status-name">{$i18n.exportPipeline}</div>
       </div>
       <div class="status-body">
         <div class="status-value">{formatExportStatus(state.exportStatus.status)}</div>
         <div class="status-desc">{state.exportStatus.message}</div>
       </div>
       <div class="status-footer">
-        <div class="footer-label">最近导出时间</div>
+        <div class="footer-label">{$i18n.lastExportTime}</div>
         <div class="footer-value">
-          {state.exportStatus.lastExportAt ? formatDate(state.exportStatus.lastExportAt) : '从未导出'}
+          {state.exportStatus.lastExportAt ? formatDate(state.exportStatus.lastExportAt) : $i18n.neverExported}
         </div>
         {#if state.exportStatus.lastExportedCount > 0}
-          <div class="footer-sub">({formatNumber(state.exportStatus.lastExportedCount)} 个会话)</div>
+          <div class="footer-sub">({$i18n.sessionsUnit(Number(formatNumber(state.exportStatus.lastExportedCount).replace(/,/g, '')) || state.exportStatus.lastExportedCount)})</div>
         {/if}
       </div>
     </div>

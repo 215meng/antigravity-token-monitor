@@ -28,7 +28,8 @@ import {
 } from '../types';
 import { SessionScanner } from './sessionScanner';
 import { SessionUsageCalculator } from './sessionUsageCalculator';
-import { deduplicateSessionsFromArtifacts } from './responseDeduplicator';
+import { deduplicateSessionsIncremental } from './responseDeduplicator';
+import { clearDedupIndex } from './dedupIndex';
 import {
   calculateModelCost,
   LiteLlmPricingCatalog,
@@ -86,6 +87,15 @@ export class TokenMonitorService implements MonitorDisposable {
   private lastExportedCount = 0;
   private readonly pricingCatalog = new LiteLlmPricingCatalog();
   private pricingState: PricingState = {};
+  private stateVersion = 0;
+  private cachedDashboardBase?: {
+    version: number;
+    lastExportedCount: number;
+    sessions: DashboardState['sessions'];
+    summary: DashboardState['summary'];
+    pricing: DashboardState['pricing'];
+    analytics: DashboardState['analytics'];
+  };
 
   private static readonly EMIT_DEBOUNCE_MS = 150;
   private static readonly MANUAL_REFRESH_DELAY_MS = TokenMonitorService.EMIT_DEBOUNCE_MS;
@@ -100,8 +110,14 @@ export class TokenMonitorService implements MonitorDisposable {
     private readonly logger: MonitorLogger
   ) {}
 
+  private bumpStateVersion(): void {
+    this.stateVersion += 1;
+    this.cachedDashboardBase = undefined;
+  }
+
   async initialize(options?: { waitForInitialSync?: boolean; skipInitialSync?: boolean }): Promise<void> {
     this.state = normalizePersistedState(await this.store.load());
+    this.bumpStateVersion();
     this.stopTimer();
     this.stopExportTimer();
     this.startTimer();
@@ -136,18 +152,39 @@ export class TokenMonitorService implements MonitorDisposable {
   }
 
   getDashboardState(): DashboardState {
-    const sessions = Object.values(this.state.sessions)
-      .map((session) => toDashboardSession(session))
-      .sort(compareDashboardSessions);
-    const activeSessions = sessions.filter((session) => session.status === 'active');
-    const archivedSessions = sessions.filter((session) => session.status === 'archived');
-    const analyticsBundle = buildDashboardAnalytics(
-      this.state.sessions,
-      this.lastExportedCount,
-      this.pricingState.snapshot,
-      this.pricingState.error,
-      (model) => this.pricingCatalog.resolveModelPricing(model)
-    );
+    let base = this.cachedDashboardBase;
+    if (!base || base.version !== this.stateVersion || base.lastExportedCount !== this.lastExportedCount) {
+      const sessions = Object.values(this.state.sessions)
+        .map((session) => toDashboardSession(session))
+        .sort(compareDashboardSessions);
+      const activeSessions = sessions.filter((session) => session.status === 'active');
+      const archivedSessions = sessions.filter((session) => session.status === 'archived');
+      const analyticsBundle = buildDashboardAnalytics(
+        this.state.sessions,
+        this.lastExportedCount,
+        this.pricingState.snapshot,
+        this.pricingState.error,
+        (model) => this.pricingCatalog.resolveModelPricing(model)
+      );
+
+      base = {
+        version: this.stateVersion,
+        lastExportedCount: this.lastExportedCount,
+        sessions,
+        summary: {
+          sessionCount: sessions.length,
+          activeSessionCount: activeSessions.length,
+          archivedSessionCount: archivedSessions.length,
+          messageCount: sessions.reduce((sum, session) => sum + session.messageCount, 0),
+          changedSessionCount: activeSessions.filter((session) => session.latestDelta.totalTokens > 0).length,
+          totalTokens: sessions.reduce((sum, session) => sum + session.latest.totalTokens, 0),
+          estimatedSessionCount: sessions.filter((session) => session.mode === 'estimated').length
+        },
+        pricing: analyticsBundle.pricing,
+        analytics: analyticsBundle.analytics
+      };
+      this.cachedDashboardBase = base;
+    }
 
     return {
       rootPath: this.configProvider().sessionRoot,
@@ -169,18 +206,10 @@ export class TokenMonitorService implements MonitorDisposable {
         lastExportAt: this.lastExportAt,
         lastExportedCount: this.lastExportedCount
       },
-      sessions,
-      summary: {
-        sessionCount: sessions.length,
-        activeSessionCount: activeSessions.length,
-        archivedSessionCount: archivedSessions.length,
-        messageCount: sessions.reduce((sum, session) => sum + session.messageCount, 0),
-        changedSessionCount: activeSessions.filter((session) => session.latestDelta.totalTokens > 0).length,
-        totalTokens: sessions.reduce((sum, session) => sum + session.latest.totalTokens, 0),
-        estimatedSessionCount: sessions.filter((session) => session.mode === 'estimated').length
-      },
-      pricing: analyticsBundle.pricing,
-      analytics: analyticsBundle.analytics
+      sessions: base.sessions,
+      summary: base.summary,
+      pricing: base.pricing,
+      analytics: base.analytics
     };
   }
 
@@ -202,6 +231,7 @@ export class TokenMonitorService implements MonitorDisposable {
           `Refresh reused persisted state: lastPollAt=${freshState.lastPollAt} ageMs=${Date.now() - freshState.lastPollAt} thresholdMs=${config.pollIntervalMs * 0.8}.`
         );
         this.state = freshState;
+        this.bumpStateVersion();
         this.lastError = undefined; // Clear stale errors on successful cooldown
         this.emit();
         return;
@@ -250,6 +280,7 @@ export class TokenMonitorService implements MonitorDisposable {
         const nextSessions: PersistedState['sessions'] = { ...this.state.sessions };
         const seenIds = new Set<string>();
         let filesystemFallbackCandidates = 0;
+        let hasSessionMutation = false;
 
         for (const candidate of scanResult.sessions) {
           const parsePlan = await resolveParsePlan(candidate, artifactStore, artifactManifests.get(candidate.sessionId));
@@ -267,14 +298,22 @@ export class TokenMonitorService implements MonitorDisposable {
             && hasDailyModelBreakdowns(previous.latest)
           ) {
             this.log(`Refresh reused cached session=${candidate.sessionId} total=${previous.latest.totalTokens}.`);
-            // Still add empty snapshot to reset delta for next cycle
-            nextSessions[candidate.sessionId] = {
-              ...previous,
-              snapshots: appendSnapshot(previous.snapshots, emptySnapshotAt(previous.latest.mode, capturedAt), config.historyLimit),
-              lifecycle: createActiveLifecycle(capturedAt)
-            };
+            const lastSnapshot = previous.snapshots[previous.snapshots.length - 1];
+            const needsDeltaReset = !lastSnapshot || lastSnapshot.totalTokens > 0;
+            const needsReactivation = previous.lifecycle.status !== 'active';
+            if (needsDeltaReset || needsReactivation) {
+              nextSessions[candidate.sessionId] = {
+                ...previous,
+                snapshots: needsDeltaReset
+                  ? appendSnapshot(previous.snapshots, emptySnapshotAt(previous.latest.mode, capturedAt), config.historyLimit)
+                  : previous.snapshots,
+                lifecycle: createActiveLifecycle(capturedAt)
+              };
+              hasSessionMutation = true;
+            }
             continue;
           }
+          hasSessionMutation = true;
           const latest = await parser.parse(parsePlan);
           // 安全防护：仅当原本有有效 reported 数据而本次因故障退化为 0 或估算模式时保留历史数据
           let effectiveLatest = latest;
@@ -312,7 +351,10 @@ export class TokenMonitorService implements MonitorDisposable {
             const archivedId = entry.name;
             const existing = nextSessions[archivedId];
             if (existing && hasDailyModelBreakdowns(existing.latest)) {
-              nextSessions[archivedId] = archivePersistedSession(existing, existing.lifecycle.archivedAt ?? capturedAt);
+              if (existing.lifecycle.status !== 'archived') {
+                nextSessions[archivedId] = archivePersistedSession(existing, existing.lifecycle.archivedAt ?? capturedAt);
+                hasSessionMutation = true;
+              }
               seenIds.add(archivedId);
               continue;
             }
@@ -331,6 +373,7 @@ export class TokenMonitorService implements MonitorDisposable {
             if (tokenFilePaths.length === 0) {
               continue;
             }
+            hasSessionMutation = true;
             const lastMod = manifest?.serverLastModifiedMs ?? existing?.latest.lastModifiedMs ?? capturedAt;
             const parsedArchived = await parser.parse({
               sessionId: archivedId,
@@ -358,25 +401,40 @@ export class TokenMonitorService implements MonitorDisposable {
         }
 
         for (const sessionId of Object.keys(nextSessions)) {
-          if (!seenIds.has(sessionId)) {
+          if (!seenIds.has(sessionId) && nextSessions[sessionId].lifecycle.status !== 'archived') {
             nextSessions[sessionId] = archivePersistedSession(nextSessions[sessionId], capturedAt);
+            hasSessionMutation = true;
           }
         }
 
-        // 跨会话克隆去重 + 撤回历史分支补齐 + 每日真实日期核算
-        const deduplicatedSessions = await deduplicateSessionsFromArtifacts(nextSessions, config.sessionRoot);
+        // 增量跨会话克隆去重 + 撤回历史分支补齐 + 每日真实日期核算
+        const dedupResult = await deduplicateSessionsIncremental(nextSessions, config.sessionRoot);
+        this.log(
+          `Refresh dedup: dirty=${dedupResult.dirtyCount} recomputed=${dedupResult.recomputedCount} total=${dedupResult.totalSessions} usedIndex=${dedupResult.usedIndex}.`
+        );
 
         if (filesystemFallbackCandidates > 0) {
           this.log(`Refresh used filesystem fallback for ${filesystemFallbackCandidates} session candidate(s).`);
         }
 
-        this.state = {
-          lastPollAt: capturedAt,
-          sessions: deduplicatedSessions
-      };
-      this.lastError = undefined;
-      this.log(`Refresh completed: trackedSessions=${Object.keys(nextSessions).length} capturedAt=${capturedAt}.`);
-      await this.store.save(this.state);
+        const hasChanges = hasSessionMutation
+          || dedupResult.dirtyCount > 0
+          || dedupResult.recomputedCount > 0
+          || this.state.lastPollAt === undefined;
+
+        this.lastError = undefined;
+        if (!hasChanges) {
+          this.state.lastPollAt = capturedAt;
+          this.log(`Refresh zero-change short-circuit: skipped store.save() for ${dedupResult.totalSessions} session(s).`);
+        } else {
+          this.state = {
+            lastPollAt: capturedAt,
+            sessions: dedupResult.sessions
+          };
+          this.bumpStateVersion();
+          this.log(`Refresh completed: trackedSessions=${Object.keys(dedupResult.sessions).length} capturedAt=${capturedAt}.`);
+          await this.store.save(this.state);
+        }
     } catch (error) {
       const originalError = error instanceof Error ? error : new Error(String(error));
       this.lastError = sanitizeErrorMessage(originalError.message);
@@ -405,10 +463,18 @@ export class TokenMonitorService implements MonitorDisposable {
     return exportedCount;
   }
 
-  async exportNow(options?: { force?: boolean; selectiveForce?: boolean; refreshAfter?: boolean }): Promise<number> {
-    const exportedCount = await this.runExportCycle({ force: options?.force === true, selectiveForce: options?.selectiveForce === true });
+  async exportNow(options?: { force?: boolean; selectiveForce?: boolean; refreshAfter?: boolean; forceRefresh?: boolean }): Promise<number> {
+    const isForced = options?.force === true || options?.selectiveForce === true;
+    const exportedCount = await this.runExportCycle({
+      force: options?.force === true,
+      selectiveForce: options?.selectiveForce === true
+    });
     if (options?.refreshAfter !== false) {
-      await this.refresh({ skipExport: true, force: true, selectiveForce: options?.selectiveForce === true });
+      await this.refresh({
+        skipExport: true,
+        force: isForced || options?.forceRefresh === true || exportedCount > 0 || this.state.lastPollAt === undefined,
+        selectiveForce: options?.selectiveForce === true
+      });
     }
     return exportedCount;
   }
@@ -427,9 +493,11 @@ export class TokenMonitorService implements MonitorDisposable {
     const config = this.configProvider();
     const artifactStore = new RpcArtifactStore(config.sessionRoot);
     const clearedCount = await artifactStore.clearAll();
+    await clearDedupIndex(config.sessionRoot);
 
     // 인메모리 상태도 완전 초기화
     this.state = { sessions: {} };
+    this.bumpStateVersion();
     await this.store.save(this.state);
     this.lastExportAt = undefined;
     this.lastExportedCount = 0;
@@ -610,16 +678,26 @@ export class TokenMonitorService implements MonitorDisposable {
 
   private async refreshPricing(): Promise<void> {
     try {
+      const nextSnapshot = await this.pricingCatalog.getSnapshot();
+      const prevUpdatedAt = this.pricingState.snapshot?.fetchedAt;
+      const changed = prevUpdatedAt !== nextSnapshot.fetchedAt || this.pricingState.error !== undefined;
       this.pricingState = {
-        snapshot: await this.pricingCatalog.getSnapshot(),
+        snapshot: nextSnapshot,
         error: undefined
       };
+      if (changed) {
+        this.bumpStateVersion();
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to refresh LiteLLM pricing data.';
+      const changed = this.pricingState.error !== message;
       this.pricingState = {
         snapshot: this.pricingState.snapshot,
         error: message
       };
+      if (changed) {
+        this.bumpStateVersion();
+      }
       this.log(message);
     }
   }

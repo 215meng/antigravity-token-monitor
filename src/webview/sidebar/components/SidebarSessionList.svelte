@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { DashboardSession } from '../../../types';
   import { formatCompact, formatRelative } from '../../lib/formatters';
+  import { i18n } from '../../lib/i18n';
 
   export let sessions: DashboardSession[];
   export let onOpenSession: (sessionId: string) => void;
@@ -21,8 +22,8 @@
 
 <section class="session-list">
   <div class="section-header">
-    <h3 class="section-label">最近活跃会话</h3>
-    <span class="session-count">{activeSessions.length} active</span>
+    <h3 class="section-label">{$i18n.recentActiveSessions}</h3>
+    <span class="session-count">{activeSessions.length} {$i18n.activeCountSuffix}</span>
   </div>
 
   {#if visibleActive.length > 0}
@@ -31,7 +32,7 @@
         <button
           class="session-item"
           on:click={() => onOpenSession(session.sessionId)}
-          title="在监控面板中打开"
+          title={$i18n.sidebarOpenDashboardTitle}
         >
           <div class="session-row">
             <span class="session-name">{session.label}</span>
@@ -58,24 +59,24 @@
 
     {#if !expanded && hiddenActiveCount > 0}
       <button class="expand-btn" on:click={toggle}>
-        展开其余 {hiddenActiveCount} 个会话
+        {$i18n.expandMoreSessions(hiddenActiveCount)}
       </button>
     {:else if expanded && hiddenActiveCount > 0}
       <button class="expand-btn" on:click={toggle}>
-        收起
+        {$i18n.collapseSessions}
       </button>
     {/if}
 
     {#if expanded && archivedSessions.length > 0}
       <div class="archived-divider">
-        <span>{archivedSessions.length} archived</span>
+        <span>{archivedSessions.length} {$i18n.archivedCountSuffix}</span>
       </div>
       <div class="sessions">
         {#each archivedSessions as session (session.sessionId)}
           <button
             class="session-item archived"
             on:click={() => onOpenSession(session.sessionId)}
-            title="Open in dashboard"
+            title={$i18n.sidebarOpenDashboardTitle}
           >
             <div class="session-row">
               <span class="session-name">{session.label}</span>
@@ -89,7 +90,7 @@
       </div>
     {/if}
   {:else}
-    <div class="empty">暂无活跃会话记录</div>
+    <div class="empty">{$i18n.emptySidebarSessions}</div>
   {/if}
 </section>
 
@@ -98,6 +99,11 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
+    padding: 10px 11px;
+    background: var(--surface-glass, var(--surface-subtle));
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-elevated);
   }
   .section-header {
     display: flex;

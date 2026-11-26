@@ -1,27 +1,21 @@
 <script lang="ts">
+  import { i18n } from '../lib/i18n';
 </script>
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">指标与口径说明</h2>
-    <div class="card-meta">数据核算口径</div>
+    <h2 class="section-title">{$i18n.aboutTitle}</h2>
+    <div class="card-meta">{$i18n.aboutSubtitle}</div>
   </div>
 
   <div class="card-body">
     <div class="info-card">
       <ul class="info-list">
-        <li>
-          <span class="highlight">官方上报 (Reported)</span>：直接从 Antigravity 底层语言服务器 RPC 获取的精准 Token 载荷。
-        </li>
-        <li>
-          <span class="highlight">文本估算 (Estimated)</span>：当会话无结构化 RPC 载荷时的保底字符估算。
-        </li>
-        <li>
-          💡 去重与精确核算：按唯一请求 ID (`responseId`) 消除父子会话/Subagent 历史克隆重复，正交拆分纯答复输出与深度思考 Token，并自动融合被撤回/重发分支的历史真实调用，全面覆盖活跃与归档会话。
-        </li>
-        <li>
-          📅 每日热力图：严格依据每次模型调用的真实发生时间戳归入当天日期，不会因后续对话而迁移历史日期用量。
-        </li>
+        {#each $i18n.aboutItems as item}
+          <li>
+            <span class="highlight">{item.label}</span>：{item.text}
+          </li>
+        {/each}
       </ul>
     </div>
   </div>

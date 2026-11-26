@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { RpcCoverageBreakdown } from '../../types';
   import { formatNumber } from '../lib/formatters';
+  import { i18n } from '../lib/i18n';
 
   export let coverage: RpcCoverageBreakdown;
   export let exportedInLastRun: number;
@@ -12,18 +13,18 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">RPC 采集覆盖率</h2>
-    <div class="card-meta">数据采集范围</div>
+    <h2 class="section-title">{$i18n.coverageTitle}</h2>
+    <div class="card-meta">{$i18n.coverageSubtitle}</div>
   </div>
 
   <div class="card-body">
     <div class="breakdown-section">
-      <h3 class="subsection-title">跟踪范围</h3>
+      <h3 class="subsection-title">{$i18n.trackingScope}</h3>
       <div class="breakdown-list">
         <div class="breakdown-item">
           <div class="item-info">
-            <span class="item-name tag tag-neutral">跟踪会话数</span>
-            <span class="item-stats">{formatNumber(coverage.trackedSessions)} 个会话</span>
+            <span class="item-name tag tag-neutral">{$i18n.trackedSessions}</span>
+            <span class="item-stats">{formatNumber(coverage.trackedSessions)}</span>
           </div>
           <div class="bar-container">
             <div class="bar bar-neutral" style="width: 100%"></div>
@@ -31,8 +32,8 @@
         </div>
         <div class="breakdown-item">
           <div class="item-info">
-            <span class="item-name tag tag-active">近期变更会话</span>
-            <span class="item-stats">{formatNumber(coverage.changedSessions)} sessions</span>
+            <span class="item-name tag tag-active">{$i18n.changedSessions}</span>
+            <span class="item-stats">{formatNumber(coverage.changedSessions)}</span>
           </div>
           <div class="bar-container">
             <div class="bar bar-active" style="width: {activeShare}%"></div>
@@ -44,12 +45,12 @@
     <div class="divider"></div>
 
     <div class="breakdown-section">
-      <h3 class="subsection-title">导出健康度</h3>
+      <h3 class="subsection-title">{$i18n.exportHealth}</h3>
       <div class="breakdown-list">
         <div class="breakdown-item">
           <div class="item-info">
-            <span class="item-name tag tag-exported">已导出覆盖</span>
-            <span class="item-stats">{formatNumber(coverage.exportedSessions)} sessions</span>
+            <span class="item-name tag tag-exported">{$i18n.exportedCoverage}</span>
+            <span class="item-stats">{formatNumber(coverage.exportedSessions)}</span>
           </div>
           <div class="bar-container">
             <div class="bar bar-exported" style="width: {exportedShare}%"></div>
@@ -57,11 +58,11 @@
         </div>
         <div class="breakdown-item compact-note">
           <div class="note-row">
-            <span>上次导出写入</span>
+            <span>{$i18n.lastExportWrite}</span>
             <strong>{formatNumber(exportedInLastRun)}</strong>
           </div>
           <div class="note-row">
-            <span>已归档稳定会话</span>
+            <span>{$i18n.archivedStable}</span>
             <strong>{formatNumber(stableSessions)}</strong>
           </div>
         </div>

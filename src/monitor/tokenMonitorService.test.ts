@@ -308,6 +308,50 @@ describe('TokenMonitorService', () => {
     expect(todayBin?.costUsd).toBeCloseTo(1.50);
     expect(state.pricing.totalCostUsd).toBeCloseTo(1.65);
   });
+
+  it('reuses cached getDashboardState analytics/sessions across repeated reads and skips store.save when zero changes occur', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    const sessionRoot = await mkdtemp(path.join(tmpdir(), 'antigravity-cache-hit-'));
+    const harness = await createStoreHarness();
+    const saveSpy = vi.spyOn(harness.store, 'save');
+    const totals = buildTotals('session-1', 250);
+    totals.dailyBreakdowns = {
+      '2026-11-26': {
+        inputTokens: totals.inputTokens,
+        outputTokens: totals.outputTokens,
+        cacheReadTokens: totals.cacheReadTokens,
+        cacheWriteTokens: totals.cacheWriteTokens,
+        reasoningTokens: totals.reasoningTokens,
+        totalTokens: totals.totalTokens,
+        messageCount: 1,
+        modelBreakdowns: totals.modelBreakdowns
+      }
+    };
+
+    const service = createService({
+      sessionRoot,
+      store: harness.store,
+      scannerResults: [
+        { sessions: [buildCandidate(sessionRoot)], complete: true },
+        { sessions: [buildCandidate(sessionRoot)], complete: true }
+      ],
+      parseResults: [totals]
+    });
+    services.push(service);
+
+    await service.initialize();
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+
+    const view1 = service.getDashboardState();
+    const view2 = service.getDashboardState();
+    expect(view2.sessions).toBe(view1.sessions);
+    expect(view2.analytics).toBe(view1.analytics);
+
+    // Forced refresh with identical scan signature and zero delta should short-circuit store.save
+    await service.refresh({ force: true, skipExport: true });
+    expect(service.getDashboardState().syncStatus).toBe('idle');
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createService(options: {

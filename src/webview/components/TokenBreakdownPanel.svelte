@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TokenBreakdown } from '../../types';
   import { formatNumber } from '../lib/formatters';
+  import { i18n } from '../lib/i18n';
 
   export let breakdown: TokenBreakdown;
   export let dateLabel = '';
@@ -8,12 +9,13 @@
   $: cacheTokens = breakdown.cacheReadTokens + breakdown.cacheWriteTokens;
   $: categorizedTotal = breakdown.inputTokens + breakdown.outputTokens + cacheTokens + breakdown.reasoningTokens;
   $: total = Math.max(categorizedTotal, 1);
+  $: cacheHitPct = categorizedTotal > 0 ? (breakdown.cacheReadTokens / categorizedTotal) * 100 : 0;
 
   $: items = [
-    { key: 'input', label: '输入 (Input)', tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100 },
-    { key: 'output', label: '输出 (Output)', tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100 },
-    { key: 'cache', label: '缓存 (Cache)', tokens: cacheTokens, pct: (cacheTokens / total) * 100 },
-    { key: 'reasoning', label: '深度思考 (Reasoning)', tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100 }
+    { key: 'input', label: $i18n.inputLabel, tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100 },
+    { key: 'output', label: $i18n.outputLabel, tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100 },
+    { key: 'cache', label: $i18n.cacheLabel, tokens: cacheTokens, pct: (cacheTokens / total) * 100 },
+    { key: 'reasoning', label: $i18n.reasoningLabel, tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100 }
   ];
 
   const formatPct = (pct: number) => pct < 0.1 && pct > 0 ? '<0.1%' : `${pct.toFixed(1)}%`;
@@ -21,20 +23,27 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">Token 构成细分</h2>
-    <div class="card-meta">{dateLabel ? `今日 (${dateLabel}) 各维度占比` : '今日各维度占比'}</div>
+    <h2 class="section-title">{$i18n.tokenBreakdownTitle}</h2>
+    <div class="card-meta">{dateLabel ? `${$i18n.todayPrefix} (${dateLabel})` : $i18n.todayPrefix}</div>
   </div>
 
   <div class="card-body">
-    <div class="total-display">
-      <span class="total-number">{formatNumber(breakdown.totalTokens)}</span>
-      <span class="total-label">今日 Token 总量</span>
+    <div class="total-header-row">
+      <div class="total-display">
+        <span class="total-number">{formatNumber(breakdown.totalTokens)}</span>
+        <span class="total-label">{$i18n.todayFocus}</span>
+      </div>
+      {#if categorizedTotal > 0}
+        <span class="cache-hit-badge">
+          {$i18n.cacheHitLabel} {formatPct(cacheHitPct)}
+        </span>
+      {/if}
     </div>
 
     <div class="coverage-copy">
-      <span>已分类细分总量: {formatNumber(categorizedTotal)}</span>
+      <span>{$i18n.classifiedTotal}: {formatNumber(categorizedTotal)}</span>
       {#if breakdown.totalTokens !== categorizedTotal}
-        <span>• {formatPct(categorizedTotal / Math.max(breakdown.totalTokens, 1) * 100)} 已归类</span>
+        <span>• {formatPct(categorizedTotal / Math.max(breakdown.totalTokens, 1) * 100)} {$i18n.classifiedPct}</span>
       {/if}
     </div>
 
@@ -85,14 +94,43 @@
     color: var(--muted);
   }
   .card-body {
-    background: var(--panel);
+    background: var(--surface-glass, var(--panel));
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: var(--spacing-lg);
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    gap: 16px;
     box-shadow: var(--shadow-elevated);
+    position: relative;
+    overflow: hidden;
+  }
+  .card-body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--edge-highlight);
+    opacity: 0.5;
+  }
+  .total-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .cache-hit-badge {
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--code-font);
+    color: var(--accent-cache, #60a5fa);
+    background: color-mix(in srgb, var(--accent-cache, #60a5fa) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-cache, #60a5fa) 28%, transparent);
+    white-space: nowrap;
   }
   .total-display {
     display: flex;
@@ -100,15 +138,16 @@
     align-items: flex-start;
   }
   .total-number {
-    font-size: 32px;
+    font-size: 28px;
     font-weight: 300;
     color: var(--text);
-    line-height: 1;
+    line-height: 1.05;
     font-family: var(--code-font);
+    font-variant-numeric: tabular-nums;
     letter-spacing: -0.02em;
   }
   .total-label {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -124,8 +163,8 @@
   }
   .stacked-bar {
     display: flex;
-    height: 32px;
-    border-radius: 16px;
+    height: 24px;
+    border-radius: 12px;
     overflow: hidden;
     background: var(--track-bg, rgba(255, 255, 255, 0.06));
     width: 100%;
@@ -133,29 +172,34 @@
   }
   .segment {
     height: 100%;
-    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: width 0.55s var(--ease-spring, cubic-bezier(0.4, 0, 0.2, 1));
   }
   .segment:not(:last-child) {
     border-right: 2px solid var(--panel);
   }
   .input { background: var(--accent); }
-  .output { background: var(--accent-strong); }
+  .output { background: var(--accent-emerald, var(--accent-strong)); }
   .reasoning { background: var(--warm); }
-  .cache { background: #73b8ff; }
+  .cache { background: var(--accent-cache, #60a5fa); }
 
   .legend {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: var(--spacing-md);
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
   .legend-item {
     display: flex;
-    align-items: flex-start;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm);
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
     background: var(--surface-subtle, rgba(255, 255, 255, 0.02));
-    border-radius: 8px;
+    border-radius: 10px;
     border: 1px solid var(--surface-line);
+    transition: border-color 160ms var(--ease-spring, ease), transform 160ms var(--ease-spring, ease);
+  }
+  .legend-item:hover {
+    border-color: var(--line-hover, var(--line));
+    transform: translateX(2px);
   }
   .legend-color {
     width: 14px;

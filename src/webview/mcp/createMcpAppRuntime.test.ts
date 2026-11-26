@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { dashboardError, dashboardState } from '../lib/dashboardStore';
+import { dashboardError, dashboardRefreshing, dashboardState } from '../lib/dashboardStore';
 import { dispatchHostMessage, setHostMessageHandler } from '../lib/hostBridge';
 import { mockDashboardState } from '../test/fixtures/dashboardState.fixture';
 
@@ -50,6 +50,7 @@ describe('webview/mcp/createMcpAppRuntime', () => {
     calls.length = 0;
     dashboardState.set(null);
     dashboardError.set(null);
+    dashboardRefreshing.set(false);
     setHostMessageHandler(null);
   });
 
@@ -75,9 +76,15 @@ describe('webview/mcp/createMcpAppRuntime', () => {
     expect(get(dashboardState)?.summary.totalTokens).toBe(600);
     expect(get(dashboardError)).toBeNull();
 
+    const refreshingObserved: boolean[] = [];
+    const unsubscribe = dashboardRefreshing.subscribe((val) => refreshingObserved.push(val));
+
     dispatchHostMessage({ type: 'sidebar/refresh' });
     await new Promise((r) => setTimeout(r, 10));
+    unsubscribe();
 
+    expect(refreshingObserved).toContain(true);
+    expect(get(dashboardRefreshing)).toBe(false);
     expect(calls).toEqual([
       { name: 'open_token_sidebar', arguments: {} },
       { name: 'open_token_sidebar', arguments: { refresh: true } }

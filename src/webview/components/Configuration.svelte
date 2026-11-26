@@ -1,39 +1,38 @@
 <script lang="ts">
   import type { DashboardState } from '../../types';
+  import { i18n } from '../lib/i18n';
 
   export let state: DashboardState;
 </script>
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">监控配置</h2>
-    <div class="card-meta">配置选项</div>
+    <h2 class="section-title">{$i18n.configTitle}</h2>
+    <div class="card-meta">{$i18n.configSubtitle}</div>
   </div>
 
   <div class="card-body">
     <div class="config-card">
       <div class="config-item">
-        <div class="config-label">会话存储根目录</div>
+        <div class="config-label">{$i18n.sessionRootLabel}</div>
         <div class="config-value mono" title={state.rootPath}>{state.rootPath}</div>
       </div>
 
       <div class="config-item">
-        <div class="config-label">RPC 自动导出</div>
-        <div class="config-value">{state.config.useRpcExport ? '已启用' : '已禁用'}</div>
+        <div class="config-label">{$i18n.rpcExportLabel}</div>
+        <div class="config-value">{state.config.useRpcExport ? $i18n.enabled : $i18n.disabled}</div>
       </div>
 
       <div class="config-item">
-        <div class="config-label">会话步骤导出</div>
-        <div class="config-value">{state.config.exportStepsJsonl ? '已启用' : '已禁用'}</div>
+        <div class="config-label">{$i18n.stepsExportLabel}</div>
+        <div class="config-value">{state.config.exportStepsJsonl ? $i18n.enabled : $i18n.disabled}</div>
       </div>
     </div>
 
     {#if !state.config.exportStepsJsonl}
       <div class="info-card" role="status" aria-live="polite">
-        <div class="info-title">Step 导出：仅元数据</div>
-        <div class="info-copy">
-          `exportStepsJsonl` 未开启 —— 步骤仅导出元数据（角色、时间戳、模型），消息统计正常工作。开启后可导出完整对话内容。
-        </div>
+        <div class="info-title">{$i18n.stepsMetaOnlyTitle}</div>
+        <div class="info-copy">{$i18n.stepsMetaOnlyCopy}</div>
       </div>
     {/if}
   </div>

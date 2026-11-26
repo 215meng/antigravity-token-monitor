@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ActivityHeatmapBin } from '../../types';
-  import { formatNumber, formatCompact, formatUsd } from '../lib/formatters';
+  import { formatCompact, formatUsd } from '../lib/formatters';
+  import { i18n, locale } from '../lib/i18n';
   import { onDestroy, onMount, tick } from 'svelte';
 
   export let heatmap: ActivityHeatmapBin[];
@@ -70,17 +71,29 @@
   function formatDateLabel(dateStr: string): string {
     const [y, m, d] = dateStr.split('-').map(Number);
     const date = new Date(y, m - 1, d);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return date.toLocaleDateString($locale === 'en' ? 'en-US' : 'zh-CN', { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
-  $: maxTokens = Math.max(...heatmap.map(b => b.totalTokens), 1);
+  $: sortedNonZeroTokens = heatmap
+    .map((b) => b.totalTokens)
+    .filter((v) => v > 0)
+    .sort((a, b) => a - b);
+  $: maxTokens = sortedNonZeroTokens.length > 0 ? sortedNonZeroTokens[sortedNonZeroTokens.length - 1] : 1;
 
-  function getIntensity(tokens: number): number {
-    if (tokens === 0) return 0;
-    return Math.max(0.2, Math.min(1, Math.log(tokens + 1) / Math.log(maxTokens + 1)));
+  function getHeatmapLevel(tokens: number, sorted: number[], maxVal: number): number {
+    if (tokens <= 0 || sorted.length === 0) return 0;
+    const count = sorted.length;
+    if (count === 1) return 10;
+    let rankIndex = sorted.findIndex((v) => v >= tokens);
+    if (rankIndex < 0) rankIndex = count - 1;
+    const rankRatio = rankIndex / Math.max(count - 1, 1);
+    const powRatio = Math.pow(tokens / Math.max(maxVal, 1), 0.45);
+    const score = 0.55 * rankRatio + 0.45 * powRatio;
+    return Math.max(1, Math.min(10, Math.round(1 + score * 9)));
   }
 
-  const dayLabels = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  $: dayLabels = $i18n.dayLabels;
+  const legendLevels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
   $: paddedHeatmap = (() => {
     if (!heatmap.length) return [];
@@ -161,8 +174,18 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">每日 Token 活跃热力图</h2>
-    <div class="card-meta">严格按每次模型调用真实发生日期分布的每日用量</div>
+    <div class="header-left">
+      <h2 class="section-title">{$i18n.heatmapTitle}</h2>
+      <div class="card-meta">{$i18n.heatmapSubtitle}</div>
+    </div>
+    <div class="heatmap-legend" aria-hidden="true">
+      <span class="legend-text">{$i18n.heatmapLess}</span>
+      <span class="legend-swatch" style="background: var(--hm-0); border-color: var(--hm-border-0);"></span>
+      {#each legendLevels as lvl}
+        <span class="legend-swatch" style="background: var(--hm-{lvl});"></span>
+      {/each}
+      <span class="legend-text">{$i18n.heatmapMore}</span>
+    </div>
   </div>
 
   <div class="heatmap-container" bind:this={containerRef} on:scroll={hidePopoverNow}>
@@ -186,12 +209,12 @@
                 <div class="cell-empty"></div>
               {:else}
                 {@const tokens = bin.totalTokens || 0}
-                {@const intensity = getIntensity(tokens)}
+                {@const level = getHeatmapLevel(tokens, sortedNonZeroTokens, maxTokens)}
                 <div
                   role="button"
                   tabindex="0"
                   class="heatmap-cell"
-                  style="background-color: {tokens > 0 ? `rgba(42, 157, 244, ${intensity})` : 'var(--bg-elevated)'}; border-color: {tokens > 0 ? `rgba(42, 157, 244, ${Math.max(0.2, intensity)})` : 'var(--line)'}"
+                  style="background-color: var(--hm-{level}); border-color: {level === 0 ? 'var(--hm-border-0)' : 'transparent'}"
                   on:mouseenter={(e) => handleCellEnter(e, bin)}
                   on:mouseleave={handleCellLeave}
                 ></div>
@@ -216,41 +239,41 @@
     <div class="popover-divider"></div>
 
     <div class="popover-row popover-row--highlight">
-      <span class="popover-label">Token 吞吐量</span>
+      <span class="popover-label">{$i18n.tokenThroughput}</span>
       <span class="popover-value popover-value--accent">{formatCompact(hoveredBin.totalTokens)}</span>
     </div>
 
     <div class="popover-divider"></div>
 
     <div class="popover-row">
-      <span class="popover-label">净输入 (Input)</span>
+      <span class="popover-label">{$i18n.inputDesc}</span>
       <span class="popover-value">{formatCompact(hoveredBin.inputTokens)}</span>
     </div>
     <div class="popover-row">
-      <span class="popover-label">净输出 (Output)</span>
+      <span class="popover-label">{$i18n.outputDesc}</span>
       <span class="popover-value">{formatCompact(hoveredBin.outputTokens)}</span>
     </div>
     <div class="popover-row">
-      <span class="popover-label">缓存命中读取 (Cache Read)</span>
+      <span class="popover-label">{$i18n.cacheReadDesc}</span>
       <span class="popover-value">{formatCompact(hoveredBin.cacheReadTokens)}</span>
     </div>
     <div class="popover-row">
-      <span class="popover-label">缓存写入 (Cache Write)</span>
+      <span class="popover-label">{$i18n.cacheWriteDesc}</span>
       <span class="popover-value">{formatCompact(hoveredBin.cacheWriteTokens)}</span>
     </div>
     <div class="popover-row">
-      <span class="popover-label">深度思考 (Reasoning)</span>
+      <span class="popover-label">{$i18n.reasoningDesc}</span>
       <span class="popover-value">{formatCompact(hoveredBin.reasoningTokens)}</span>
     </div>
 
     <div class="popover-divider"></div>
 
     <div class="popover-row">
-      <span class="popover-label">预估费用</span>
+      <span class="popover-label">{$i18n.estimatedCostLabel}</span>
       <span class="popover-value">{hoveredBin.costUsd > 0 ? formatUsd(hoveredBin.costUsd) : '—'}</span>
     </div>
     <div class="popover-row">
-      <span class="popover-label">交互消息数</span>
+      <span class="popover-label">{$i18n.messagesCountLabel}</span>
       <span class="popover-value">{hoveredBin.messageCount}</span>
     </div>
   </div>
@@ -258,13 +281,24 @@
 
 <style>
   .analytical-card {
-    background: var(--panel);
+    background: var(--surface-glass, var(--panel));
     border: 1px solid var(--line);
     border-radius: var(--radius);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     box-shadow: var(--shadow-elevated);
+    position: relative;
+  }
+  .analytical-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--edge-highlight);
+    opacity: 0.45;
   }
   .card-header {
     padding: var(--spacing-sm) var(--spacing-md);
@@ -272,7 +306,30 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
     background: rgba(255, 255, 255, 0.01);
+  }
+  .header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .heatmap-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .legend-text {
+    font-size: 10px;
+    color: var(--muted);
+    margin: 0 3px;
+  }
+  .legend-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid transparent;
   }
   .section-title {
     margin: 0;

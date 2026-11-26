@@ -8,6 +8,8 @@ const ARCHIVE_FILE_SUFFIX = '.json';
 
 export class SnapshotStore {
   private saveLock = false;
+  private readonly savedArchiveDigestByMonth = new Map<string, string>();
+  private readonly savedArchivedSessionToMonth = new Map<string, string>();
   constructor(private readonly storageDir: string) {}
 
   async load(): Promise<PersistedState> {
@@ -16,11 +18,22 @@ export class SnapshotStore {
       await fs.mkdir(storageDir, { recursive: true });
       const activeState = await this.loadJsonFile(this.getStateFilePath());
       const archiveStates = await this.loadArchiveStates(storageDir);
+      this.savedArchiveDigestByMonth.clear();
+      this.savedArchivedSessionToMonth.clear();
+      for (const archiveEntry of archiveStates) {
+        this.savedArchiveDigestByMonth.set(
+          archiveEntry.month,
+          computeArchiveDigest(archiveEntry.state.sessions)
+        );
+        for (const sid of Object.keys(archiveEntry.state.sessions)) {
+          this.savedArchivedSessionToMonth.set(sid, archiveEntry.month);
+        }
+      }
 
       return {
         lastPollAt: activeState?.lastPollAt,
         sessions: mergeSessionMaps([
-          ...archiveStates.map((state) => state.sessions),
+          ...archiveStates.map((entry) => entry.state.sessions),
           activeState?.sessions ?? {}
         ])
       };
@@ -65,10 +78,24 @@ export class SnapshotStore {
       await fs.writeFile(tmpPath, JSON.stringify({ lastPollAt: state.lastPollAt, sessions: activeSessions }, null, 2), 'utf8');
       await fs.rename(tmpPath, this.getStateFilePath());
 
+      const reactivatedMonths = new Set<string>();
+      for (const activeId of Object.keys(activeSessions)) {
+        const prevMonth = this.savedArchivedSessionToMonth.get(activeId);
+        if (prevMonth) {
+          reactivatedMonths.add(prevMonth);
+          this.savedArchivedSessionToMonth.delete(activeId);
+        }
+      }
+
       const expectedArchiveFiles = new Set<string>();
       for (const [archiveMonth, sessions] of archivedByMonth) {
         const filePath = this.getArchiveFilePath(archiveMonth);
         expectedArchiveFiles.add(filePath);
+        const digest = computeArchiveDigest(sessions);
+        if (!reactivatedMonths.has(archiveMonth) && this.savedArchiveDigestByMonth.get(archiveMonth) === digest) {
+          continue;
+        }
+
         // 合并磁盘上已有的归档数据，绝不无故覆盖丢失历史会话
         const existingShard = await this.loadJsonFile(filePath);
         const mergedShard = { ...existingShard?.sessions, ...sessions };
@@ -80,9 +107,14 @@ export class SnapshotStore {
 
         if (Object.keys(mergedShard).length > 0) {
           await fs.writeFile(filePath, JSON.stringify({ sessions: mergedShard }, null, 2), 'utf8');
+          this.savedArchiveDigestByMonth.set(archiveMonth, computeArchiveDigest(mergedShard));
+          for (const sid of Object.keys(mergedShard)) {
+            this.savedArchivedSessionToMonth.set(sid, archiveMonth);
+          }
         } else {
           // 如果分片已完全被重新激活清空，才允许移除
           await fs.unlink(filePath).catch(() => {});
+          this.savedArchiveDigestByMonth.delete(archiveMonth);
         }
       }
 
@@ -90,6 +122,10 @@ export class SnapshotStore {
       // 只有当现有归档分片中的会话全部已激活（或为空）时，才清理空分片，绝不误删历史月份数据
       for (const filePath of existingArchiveFiles) {
         if (!expectedArchiveFiles.has(filePath)) {
+          const archiveMonth = extractArchiveMonthFromPath(filePath);
+          if (archiveMonth && !reactivatedMonths.has(archiveMonth) && this.savedArchiveDigestByMonth.has(archiveMonth)) {
+            continue;
+          }
           const shard = await this.loadJsonFile(filePath);
           let hasRemainingArchived = false;
           if (shard?.sessions) {
@@ -102,6 +138,9 @@ export class SnapshotStore {
           }
           if (!hasRemainingArchived) {
             await fs.unlink(filePath).catch((err) => console.warn(`[Store] Failed to delete obsolete empty ${filePath}:`, err));
+            if (archiveMonth) {
+              this.savedArchiveDigestByMonth.delete(archiveMonth);
+            }
           }
         }
       }
@@ -110,13 +149,16 @@ export class SnapshotStore {
     }
   }
 
-  private async loadArchiveStates(storageDir: string): Promise<PersistedState[]> {
+  private async loadArchiveStates(storageDir: string): Promise<Array<{ month: string; state: PersistedState }>> {
     const filePaths = await this.listArchiveFilePaths(storageDir);
-    const results: PersistedState[] = [];
+    const results: Array<{ month: string; state: PersistedState }> = [];
     for (const filePath of filePaths) {
       try {
         const state = await this.loadJsonFile(filePath);
-        if (state) results.push(state);
+        const month = extractArchiveMonthFromPath(filePath);
+        if (state && month) {
+          results.push({ month, state });
+        }
       } catch (error) {
         console.warn(`[antigravity-token-monitor] Failed to load archive ${filePath}:`, error);
       }
@@ -161,6 +203,21 @@ export class SnapshotStore {
 
 function mergeSessionMaps(sessionMaps: Array<Record<string, PersistedSessionState>>): Record<string, PersistedSessionState> {
   return Object.assign({}, ...sessionMaps);
+}
+
+function extractArchiveMonthFromPath(filePath: string): string | undefined {
+  const base = path.basename(filePath);
+  if (!base.startsWith(ARCHIVE_FILE_PREFIX) || !base.endsWith(ARCHIVE_FILE_SUFFIX)) {
+    return undefined;
+  }
+  return base.slice(ARCHIVE_FILE_PREFIX.length, -ARCHIVE_FILE_SUFFIX.length);
+}
+
+function computeArchiveDigest(sessions: Record<string, PersistedSessionState>): string {
+  const sortedEntries = Object.keys(sessions)
+    .sort()
+    .map((id) => [id, sessions[id]] as const);
+  return JSON.stringify(sortedEntries);
 }
 
 function resolveArchiveMonth(session: PersistedSessionState): string {

@@ -18,7 +18,7 @@
 
 ---
 
-![Antigravity TokenScope Dashboard](docs/screenshot.png)
+![Antigravity TokenScope Demo](docs/demo.gif)
 
 ## Why Antigravity TokenScope?
 
@@ -26,13 +26,14 @@ Ever wondered how many tokens your Antigravity agents actually consumed **today*
 
 **Antigravity TokenScope** runs natively inside Antigravity as an **MCP App Plugin** (while keeping the original VS Code extension in maintenance mode), turning raw session logs, SQLite databases, and localhost RPC metadata into an exact, real-time cost & usage observatory.
 
-| Dimension | Antigravity TokenScope | Traditional External / Naive Counters |
+| Dimension | Antigravity TokenScope (Official Built-in Plugin) | Unofficial DOM Injectors / External Counters |
 | :--- | :--- | :--- |
-| **Native Workflow** | Built right into Antigravity's left sidebar (`global`), right aux pane (`aux_pane`), and chat | Requires switching to VS Code or running manual terminal scripts |
+| **Zero-Intrusion Architecture** | Runs natively via official Antigravity MCP App & Plugin APIs—**zero CDP injection, no `--remote-debugging-port` flags, immune to client DOM updates** | Requires launching Antigravity with debugging ports or patching UI DOM, brittle across host upgrades |
+| **Native Workflow** | Built right into Antigravity's left sidebar (`global`), right aux pane (`aux_pane`), and chat with instant EN/中文 switching | Requires switching to VS Code, external shells, or fragile overlay hacks |
 | **Accounting Accuracy** | Orthogonal Thinking/Output split, cross-session `responseId` arbitration, reverted-branch fusion | Double-counts reasoning tokens, retries, and cloned subagent history (2x–5x inflated) |
-| **Daily & Monthly Insights** | Hero **Monthly Cumulative** KPI, **Today's Exact Breakdown**, true local-date daily heatmap & cost | Mixes multi-day sessions into the latest day or averages historical prices |
-| **Speed & Resilience** | Non-blocking `< 200ms` warm boot, native `node:sqlite` `.db` reader, 50 MB large-session support | Blocks UI on cold scans or truncates long sessions |
-| **Privacy** | 100% local parsing & `127.0.0.1` loopback-only RPC; zero telemetry | Often requires external proxies or cloud sync |
+| **Daily & Monthly Insights** | Hero **Today** & **Monthly Cumulative** cards, 10-step progressive daily heatmap, true local-date pricing | Mixes multi-day sessions into the latest day or averages historical prices |
+| **Incremental Performance** | 4-layer incremental engine (`< 1ms` warm dashboard read, `~100ms` single-session incremental dedup across 780+ sessions) | Re-scans full history on every open or blocks UI on cold reads |
+| **Privacy** | 100% local parsing & `127.0.0.1` loopback-only RPC; zero telemetry | Often requires external proxies, cloud sync, or open debugging ports |
 
 ---
 

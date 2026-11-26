@@ -101,7 +101,7 @@ describe('mcp/toolHandlers', () => {
     expect(controller.exportNow).not.toHaveBeenCalled();
 
     await dispatchMcpToolCall(controller, 'open_token_sidebar', { refresh: true });
-    expect(controller.exportNow).toHaveBeenCalledWith({ force: false, refreshAfter: true });
+    expect(controller.exportNow).toHaveBeenCalledWith({ force: false, refreshAfter: true, forceRefresh: true });
   });
 
   it('caps large session lists safely below 750 KiB while preserving full summary counts', async () => {
@@ -129,7 +129,7 @@ describe('mcp/toolHandlers', () => {
     expect((stateRes.structuredContent as unknown as DashboardState).summary.totalTokens).toBe(9500);
 
     await dispatchMcpToolCall(controller, 'app_refresh_now', {});
-    expect(controller.exportNow).toHaveBeenCalledWith({ force: false, refreshAfter: true });
+    expect(controller.exportNow).toHaveBeenCalledWith({ force: false, refreshAfter: true, forceRefresh: true });
 
     await dispatchMcpToolCall(controller, 'app_export_all', {});
     expect(controller.exportNow).toHaveBeenCalledWith({ force: true, refreshAfter: true });

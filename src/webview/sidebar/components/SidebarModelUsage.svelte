@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ModelUsageBreakdown } from '../../../types';
   import { formatCompact, formatUsd } from '../../lib/formatters';
+  import { i18n } from '../../lib/i18n';
   import { formatModelDisplayName } from '../../../modelAliases';
 
   export let models: ModelUsageBreakdown[];
@@ -13,7 +14,7 @@
 </script>
 
 <section class="model-usage">
-  <h3 class="section-label">模型使用分布</h3>
+  <h3 class="section-label">{$i18n.modelUsageTitle}</h3>
 
   {#if visibleModels.length > 0}
     <div class="model-list">
@@ -30,7 +31,7 @@
             ></div>
           </div>
           <div class="model-meta">
-            {model.sessionCount} 个会话
+            {$i18n.sessionsUnit(model.sessionCount)}
             {#if model.pricingStatus === 'priced' && model.costUsd !== undefined}
               • {formatUsd(model.costUsd)}
             {/if}
@@ -40,10 +41,10 @@
     </div>
 
     {#if hiddenCount > 0}
-      <div class="more-label">+ 还有 {hiddenCount} 个模型</div>
+      <div class="more-label">{$i18n.moreModels(hiddenCount)}</div>
     {/if}
   {:else}
-    <div class="empty">暂无模型数据</div>
+    <div class="empty">{$i18n.emptyModels}</div>
   {/if}
 </section>
 
@@ -51,7 +52,12 @@
   .model-usage {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs);
+    gap: 8px;
+    padding: 10px 11px;
+    background: var(--surface-glass, var(--surface-subtle));
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-elevated);
   }
   .section-label {
     margin: 0;
@@ -88,15 +94,16 @@
     color: var(--muted);
   }
   .bar-track {
-    height: 4px;
-    background: var(--surface-line);
-    border-radius: 2px;
+    height: 5px;
+    background: var(--track-bg, var(--surface-line));
+    border-radius: 999px;
     overflow: hidden;
   }
   .bar-fill {
     height: 100%;
-    background: var(--accent);
-    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-emerald, var(--accent-strong)));
+    border-radius: 999px;
+    transition: width 0.45s var(--ease-spring, ease);
   }
   .model-meta {
     font-size: 10px;

@@ -1,30 +1,33 @@
 <script lang="ts">
   import type { DashboardState } from '../../../types';
+  import { dashboardRefreshing } from '../../lib/dashboardStore';
   import { formatRelative } from '../../lib/formatters';
+  import { i18n } from '../../lib/i18n';
 
   type InsightsState = DashboardState;
   export let state: InsightsState;
 
-  $: syncIcon = state.syncStatus === 'running' ? '↻' : state.syncStatus === 'error' ? '⚠' : '✓';
+  $: isSyncRunning = $dashboardRefreshing || state.syncStatus === 'running';
+  $: syncIcon = isSyncRunning ? '↻' : state.syncStatus === 'error' ? '⚠' : '✓';
   $: exportIcon = state.exportStatus.status === 'running' ? '↻' : state.exportStatus.status === 'error' ? '⚠' : '✓';
 </script>
 
 <section class="sync-status">
-  <h3 class="section-label">运行状态</h3>
+  <h3 class="section-label">{$i18n.runtimeStatusTitle}</h3>
 
   <div class="status-rows">
     <div class="status-row">
-      <span class="status-icon" class:running={state.syncStatus === 'running'} class:error={state.syncStatus === 'error'}>
+      <span class="status-icon" class:running={isSyncRunning} class:error={!isSyncRunning && state.syncStatus === 'error'}>
         {syncIcon}
       </span>
-      <span class="status-text">数据同步</span>
+      <span class="status-text">{$i18n.dataSyncLabel}</span>
       <span class="status-detail">
-        {#if state.syncStatus === 'running'}
-          正在刷新...
+        {#if isSyncRunning}
+          {$i18n.syncingText}
         {:else if state.lastPollAt}
           {formatRelative(state.lastPollAt)}
         {:else}
-          未启动
+          {$i18n.notStarted}
         {/if}
       </span>
     </div>
@@ -34,14 +37,14 @@
         <span class="status-icon" class:running={state.exportStatus.status === 'running'} class:error={state.exportStatus.status === 'error'}>
           {exportIcon}
         </span>
-        <span class="status-text">后台导出</span>
+        <span class="status-text">{$i18n.backgroundExportLabel}</span>
         <span class="status-detail">
           {#if state.exportStatus.status === 'running'}
-            正在导出...
+            {$i18n.exportingText}
           {:else if state.exportStatus.lastExportAt}
             {formatRelative(state.exportStatus.lastExportAt)}
           {:else}
-            空闲
+            {$i18n.idleText}
           {/if}
         </span>
       </div>
@@ -60,8 +63,10 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
-    padding-top: var(--spacing-sm);
-    border-top: 1px solid var(--line);
+    padding: 10px 11px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
   }
   .section-label {
     margin: 0;

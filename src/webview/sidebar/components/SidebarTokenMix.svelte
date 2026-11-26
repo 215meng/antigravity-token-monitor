@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TokenBreakdown } from '../../../types';
   import { formatCompact } from '../../lib/formatters';
+  import { i18n } from '../../lib/i18n';
 
   export let breakdown: TokenBreakdown;
   export let dateLabel = '';
@@ -10,10 +11,10 @@
   $: total = Math.max(categorizedTotal, 1);
 
   $: items = [
-    { key: 'input', label: '输入', tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100, color: 'var(--accent)' },
-    { key: 'output', label: '输出', tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100, color: 'var(--accent-strong)' },
-    { key: 'cache', label: '缓存', tokens: cacheTokens, pct: (cacheTokens / total) * 100, color: '#73b8ff' },
-    { key: 'reasoning', label: '深度思考', tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100, color: 'var(--warm)' }
+    { key: 'input', label: $i18n.inputShort, tokens: breakdown.inputTokens, pct: (breakdown.inputTokens / total) * 100, color: 'var(--accent)' },
+    { key: 'output', label: $i18n.outputShort, tokens: breakdown.outputTokens, pct: (breakdown.outputTokens / total) * 100, color: 'var(--accent-emerald, var(--accent-strong))' },
+    { key: 'cache', label: $i18n.cacheShort, tokens: cacheTokens, pct: (cacheTokens / total) * 100, color: 'var(--accent-cache, #60a5fa)' },
+    { key: 'reasoning', label: $i18n.reasoningShort, tokens: breakdown.reasoningTokens, pct: (breakdown.reasoningTokens / total) * 100, color: 'var(--warm)' }
   ];
 
   const formatPct = (pct: number) => pct < 0.1 && pct > 0 ? '<0.1%' : `${pct.toFixed(1)}%`;
@@ -21,8 +22,8 @@
 
 <section class="token-mix">
   <div class="section-header">
-    <h3 class="section-label">Token 构成细分</h3>
-    <span class="section-date">{dateLabel ? `今日 ${dateLabel}` : '今日'}</span>
+    <h3 class="section-label">{$i18n.tokenBreakdownTitle}</h3>
+    <span class="section-date">{dateLabel ? `${$i18n.todayPrefix} ${dateLabel}` : $i18n.todayPrefix}</span>
   </div>
 
   <div class="stacked-bar">
@@ -53,7 +54,12 @@
   .token-mix {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-sm);
+    gap: 8px;
+    padding: 10px 11px;
+    background: var(--surface-glass, var(--surface-subtle));
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-elevated);
   }
   .section-header {
     display: flex;

@@ -121,6 +121,36 @@ describe('SnapshotStore', () => {
     const archiveState = await readJson(path.join(storagePath, 'monitor-state.archive-2026-02.json'));
     expect(Object.keys(archiveState.sessions)).toEqual(['archived']);
   });
+
+  it('skips rewriting unchanged historical archive shards on subsequent saves', async () => {
+    const storagePath = await mkdtemp(path.join(tmpdir(), 'antigravity-snapshot-skip-'));
+    const store = new SnapshotStore(storagePath);
+
+    const active = buildPersistedSession('active', 100, 'active', Date.UTC(2026, 2, 20));
+    const archivedMarch = buildPersistedSession('archivedMarch', 200, 'archived', Date.UTC(2026, 2, 15));
+
+    await store.save({
+      lastPollAt: 1_710_000_000_000,
+      sessions: { active, archivedMarch }
+    });
+
+    const shardPath = path.join(storagePath, 'monitor-state.archive-2026-03.json');
+    const oldTime = new Date(Date.now() - 120_000);
+    await fs.utimes(shardPath, oldTime, oldTime);
+    const beforeStat = await fs.stat(shardPath);
+
+    // Save with updated active session only -> historical 2026-03 shard should not be touched
+    await store.save({
+      lastPollAt: 1_710_000_060_000,
+      sessions: {
+        active: buildPersistedSession('active', 180, 'active', Date.UTC(2026, 2, 21)),
+        archivedMarch
+      }
+    });
+
+    const afterStat = await fs.stat(shardPath);
+    expect(Math.trunc(afterStat.mtimeMs)).toBe(Math.trunc(beforeStat.mtimeMs));
+  });
 });
 
 async function readJson(filePath: string): Promise<{ lastPollAt?: number; sessions: Record<string, PersistedSessionState> }> {

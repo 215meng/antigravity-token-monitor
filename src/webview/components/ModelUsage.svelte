@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ModelUsageBreakdown } from '../../types';
   import { formatNumber, formatUsd } from '../lib/formatters';
+  import { i18n } from '../lib/i18n';
   import { formatModelDisplayName } from '../../modelAliases';
 
   export let models: ModelUsageBreakdown[];
@@ -10,8 +11,8 @@
 
 <article class="analytical-card">
   <div class="card-header">
-    <h2 class="section-title">模型使用分布</h2>
-    <div class="card-meta">按总 Token 消耗量排序</div>
+    <h2 class="section-title">{$i18n.modelUsageTitle}</h2>
+    <div class="card-meta">{$i18n.modelUsageSubtitle}</div>
   </div>
 
   <div class="card-body">
@@ -22,11 +23,11 @@
             <div class="model-info">
               <span class="model-name">{formatModelDisplayName(model.model)}</span>
               <span class="model-stats">
-                {formatNumber(model.totalTokens)} Tokens • {model.sessionCount} 个会话
+                {formatNumber(model.totalTokens)} Tokens • {model.sessionCount} {$i18n.sessionsCountSuffix}
                 {#if model.pricingStatus === 'priced' && model.costUsd !== undefined}
                   • {formatUsd(model.costUsd)}
                 {:else if model.pricingNote}
-                  • {model.pricingNote === 'No LiteLLM pricing match.' ? '未匹配 LiteLLM 价格表' : model.pricingNote}
+                  • {model.pricingNote === 'No LiteLLM pricing match.' ? $i18n.noPricingMatch : model.pricingNote}
                 {/if}
               </span>
             </div>
@@ -37,14 +38,14 @@
         {/each}
       </div>
     {:else}
-      <div class="empty-state">暂无模型使用数据</div>
+      <div class="empty-state">{$i18n.emptyModels}</div>
     {/if}
   </div>
 </article>
 
 <style>
   .analytical-card {
-    background: var(--panel);
+    background: var(--surface-glass, var(--panel));
     border: 1px solid var(--line);
     border-radius: var(--radius);
     display: flex;
@@ -52,6 +53,17 @@
     overflow: hidden;
     box-shadow: var(--shadow-elevated);
     flex: 1;
+    position: relative;
+  }
+  .analytical-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--edge-highlight);
+    opacity: 0.45;
   }
   .card-header {
     padding: var(--spacing-sm) var(--spacing-md);
@@ -102,16 +114,16 @@
     font-size: 11px;
   }
   .bar-container {
-    height: 6px;
-    background: var(--surface-line);
-    border-radius: 3px;
+    height: 7px;
+    background: var(--track-bg, var(--surface-line));
+    border-radius: 999px;
     overflow: hidden;
   }
   .bar {
     height: 100%;
-    background: var(--accent);
-    border-radius: 3px;
-    transition: width 0.3s ease;
+    background: linear-gradient(90deg, var(--accent), var(--accent-emerald, var(--accent-strong)));
+    border-radius: 999px;
+    transition: width 0.5s var(--ease-spring, ease);
   }
   .empty-state {
     color: var(--muted);

@@ -3,7 +3,7 @@ import type { DashboardState } from '../types';
 
 export interface McpMonitorController {
   getDashboardState(): DashboardState;
-  exportNow(options: { force: boolean; refreshAfter: boolean }): Promise<number>;
+  exportNow(options: { force: boolean; refreshAfter: boolean; forceRefresh?: boolean }): Promise<number>;
   resetCache(): Promise<number>;
 }
 
@@ -25,10 +25,30 @@ type SummaryArgs = {
 const MAX_TRAJECTORY_SAFE_BYTES = 700 * 1024;
 const DEFAULT_MAX_VIEW_SESSIONS = 150;
 
+let cachedBoundedEntry: { key: string; state: DashboardState } | undefined;
+
 export function buildBoundedDashboardState(
   state: DashboardState,
   maxSessions = DEFAULT_MAX_VIEW_SESSIONS
 ): DashboardState {
+  const cacheKey = [
+    maxSessions,
+    state.lastPollAt ?? '',
+    state.syncStatus,
+    state.exportStatus.status,
+    state.exportStatus.lastExportedCount,
+    state.summary.sessionCount,
+    state.summary.totalTokens,
+    state.summary.changedSessionCount,
+    state.pricing.status,
+    state.pricing.lastUpdatedAt ?? '',
+    state.sessions.length
+  ].join('|');
+
+  if (cachedBoundedEntry && cachedBoundedEntry.key === cacheKey) {
+    return cachedBoundedEntry.state;
+  }
+
   let limit = Math.min(state.sessions.length, maxSessions);
   let candidate: DashboardState = {
     ...state,
@@ -43,6 +63,7 @@ export function buildBoundedDashboardState(
     };
   }
 
+  cachedBoundedEntry = { key: cacheKey, state: candidate };
   return candidate;
 }
 
@@ -51,7 +72,7 @@ async function maybeRefresh(
   refresh?: boolean
 ): Promise<void> {
   if (refresh) {
-    await controller.exportNow({ force: false, refreshAfter: true });
+    await controller.exportNow({ force: false, refreshAfter: true, forceRefresh: true });
   }
 }
 
@@ -108,7 +129,7 @@ export async function handleAppGetDashboardState(
 export async function handleAppRefreshNow(
   controller: McpMonitorController
 ): Promise<McpToolResponse> {
-  const exportedCount = await controller.exportNow({ force: false, refreshAfter: true });
+  const exportedCount = await controller.exportNow({ force: false, refreshAfter: true, forceRefresh: true });
   const state = controller.getDashboardState();
   return {
     content: [

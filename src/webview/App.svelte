@@ -1,6 +1,7 @@
 <script lang="ts">
   import { dashboardError, dashboardState } from './lib/dashboardStore';
   import { deriveDashboardInsights } from './lib/deriveDashboardInsights';
+  import { i18n } from './lib/i18n';
   import { vscodeApi } from './lib/vscodeApi';
   import HeaderBar from './components/HeaderBar.svelte';
   import KpiStrip from './components/KpiStrip.svelte';
@@ -24,13 +25,13 @@
       {#if $dashboardError}
         <div class="error-banner" role="alert">
           <span>{$dashboardError}</span>
-          <button class="retry-btn" on:click={() => vscodeApi.postMessage({ type: 'dashboard/ready' })}>重试</button>
+          <button class="retry-btn" on:click={() => vscodeApi.postMessage({ type: 'dashboard/ready' })}>{$i18n.retry}</button>
         </div>
       {/if}
 
       {#if !insights.hasSessions && (insights.syncStatus === 'running' || insights.exportStatus.status === 'running')}
         <div class="sync-banner" role="status">
-          正在后台首次扫描本机历史会话，完成后将自动刷新图表与本月累计数据...
+          {$i18n.initialScanBanner}
         </div>
       {/if}
 
@@ -69,10 +70,15 @@
 {:else if $dashboardError}
   <div class="loading error-state">
     <p class="error-text">{$dashboardError}</p>
-    <button class="retry-btn" on:click={() => vscodeApi.postMessage({ type: 'dashboard/ready' })}>重试加载</button>
+    <button class="retry-btn" on:click={() => vscodeApi.postMessage({ type: 'dashboard/ready' })}>{$i18n.retryLoad}</button>
   </div>
 {:else}
-  <div class="loading">正在等待监控面板数据...</div>
+  <div class="loading">
+    <div class="skeleton-shell">
+      <div class="skeleton-pulse-dot"></div>
+      <span>{$i18n.waitingDashboard}</span>
+    </div>
+  </div>
 {/if}
 
 <style>
@@ -80,8 +86,10 @@
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-    background: transparent;
-    animation: fade-in 220ms ease;
+    background:
+      radial-gradient(ellipse 65% 40% at 15% 0%, rgba(94, 234, 212, 0.055), transparent 65%),
+      radial-gradient(ellipse 50% 35% at 88% 4%, rgba(96, 165, 250, 0.045), transparent 65%);
+    animation: fade-in 260ms var(--ease-spring, ease);
   }
   .main-content {
     padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-xl);
@@ -97,7 +105,7 @@
   }
   .dashboard-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-columns: minmax(0, 1fr) 360px;
     gap: var(--spacing-lg);
     align-items: start;
   }
@@ -107,7 +115,8 @@
     gap: var(--spacing-md);
   }
   .bottom-cards {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: var(--spacing-md);
   }
   .operations-rail {
@@ -115,11 +124,11 @@
     flex-direction: column;
     gap: var(--spacing-md);
     position: sticky;
-    top: var(--spacing-lg);
+    top: 64px;
   }
   .session-deck {
     width: 100%;
-    margin-top: var(--spacing-md);
+    margin-top: var(--spacing-xs);
   }
   .loading {
     padding: 42px 20px;
@@ -131,8 +140,30 @@
     align-items: center;
     justify-content: center;
     height: 100vh;
-    font-size: 14px;
+    font-size: 13px;
     letter-spacing: 0.02em;
+  }
+  .skeleton-shell {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    border-radius: 999px;
+    background: var(--surface-glass, var(--bg-elevated));
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-elevated);
+  }
+  .skeleton-pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    animation: pulse-ring 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse-ring {
+    0%, 100% { transform: scale(0.9); opacity: 0.6; }
+    50% { transform: scale(1.2); opacity: 1; }
   }
   .error-text {
     margin: 0;
@@ -147,14 +178,20 @@
     background: var(--bg-elevated);
     color: var(--text);
     cursor: pointer;
+    transition: border-color 180ms var(--ease-spring, ease), transform 180ms var(--ease-spring, ease);
+  }
+  .retry-btn:hover {
+    border-color: var(--line-hover, var(--accent));
+    transform: translateY(-1px);
   }
   .sync-banner {
     padding: 10px 16px;
-    border-radius: 10px;
-    border: 1px solid var(--line);
-    background: var(--bg-elevated);
-    color: var(--accent);
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+    background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+    color: var(--accent-strong);
     font-size: 13px;
+    backdrop-filter: blur(8px);
   }
   .error-banner {
     display: flex;
@@ -162,7 +199,7 @@
     justify-content: space-between;
     gap: 12px;
     padding: 10px 16px;
-    border-radius: 10px;
+    border-radius: 12px;
     border: 1px solid var(--danger);
     background: var(--bg-elevated);
     color: var(--danger);
@@ -192,7 +229,7 @@
   }
   @media (max-width: 800px) {
     .bottom-cards {
-      flex-direction: column;
+      grid-template-columns: 1fr;
     }
   }
 </style>

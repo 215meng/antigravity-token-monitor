@@ -1,6 +1,6 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 import type { DashboardState } from '../../types';
-import { dashboardError, dashboardState } from '../lib/dashboardStore';
+import { dashboardError, dashboardRefreshing, dashboardState } from '../lib/dashboardStore';
 import { setHostMessageHandler } from '../lib/hostBridge';
 import { applyMcpHostContext } from '../lib/themeBridge';
 
@@ -103,6 +103,7 @@ export async function initMcpAppRuntime(view: McpAppViewKind): Promise<App> {
     if (mode !== 'read') {
       clearPollTimer();
       emptyPollCount = 0;
+      dashboardRefreshing.set(true);
     }
 
     inFlight = true;
@@ -126,6 +127,9 @@ export async function initMcpAppRuntime(view: McpAppViewKind): Promise<App> {
       dashboardError.set(`加载数据失败 (${mode}): ${message}`);
     } finally {
       inFlight = false;
+      if (mode !== 'read') {
+        dashboardRefreshing.set(false);
+      }
     }
   };
 
@@ -154,9 +158,9 @@ export async function initMcpAppRuntime(view: McpAppViewKind): Promise<App> {
     switch (msg.type) {
       case 'dashboard/ready':
       case 'sidebar/ready':
-      case 'dashboard/autoRefresh':
         void fetchState('read');
         break;
+      case 'dashboard/autoRefresh':
       case 'dashboard/refresh':
       case 'sidebar/refresh':
         void fetchState('refresh');
